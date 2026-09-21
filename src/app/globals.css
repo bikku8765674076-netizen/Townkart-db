@@ -1,0 +1,88 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --brand-primary: #FF5A36;
+    --brand-dark: #111111;
+    --brand-surface: #F7F7F5;
+    --brand-card: #FFFFFF;
+    --brand-border: #E8E8E8;
+    --brand-muted: #666666;
+    --brand-subtle: #999999;
+    --brand-success: #16803C;
+    --brand-warning: #D97706;
+    --brand-error: #DC2626;
+  }
+
+  body {
+    background-color: #FFFFFF;
+    color: #111111;
+    font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-manrope), system-ui, -apple-system, sans-serif;
+    color: #111111;
+  }
+}
+
+/* Custom shadow utilities */
+.shadow-soft {
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+}
+
+.shadow-hover {
+  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.09);
+}
+
+.shadow-glow {
+  box-shadow: 0 4px 25px rgba(255, 90, 54, 0.25);
+}
+
+/* Floating animation for hero product cards */
+@keyframes floatSlow {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes floatGentle {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(8px);
+  }
+}
+
+.animate-float-1 {
+  animation: floatSlow 4.5s ease-in-out infinite;
+}
+
+.animate-float-2 {
+  animation: floatGentle 5.2s ease-in-out infinite;
+}
+
+.animate-float-3 {
+  animation: floatSlow 6s ease-in-out infinite 0.8s;
+}
+
+/* Smooth custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+::-webkit-scrollbar-thumb {
+  background: #ccc;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #999;
+}
