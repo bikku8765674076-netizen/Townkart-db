@@ -229,17 +229,6 @@ function LoginForm() {
               <>{mode === "login" ? "Sign In" : "Create Account"} <ArrowRight className="w-4 h-4" /></>
             )}
           </button>
-
-          {/* Quick test credentials hint */}
-          {mode === "login" && (
-            <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-xs text-amber-800 space-y-1">
-              <p className="font-bold text-amber-900">🔑 Test Credentials</p>
-              <p><span className="font-semibold">Customer:</span> amit.sharma@example.com</p>
-              <p><span className="font-semibold">Admin:</span> admin@townkart.in</p>
-              <p><span className="font-semibold">Rider:</span> dinesh.rider@townkart.in</p>
-              <p className="text-amber-700 font-semibold mt-1">Password: TownKart@123</p>
-            </div>
-          )}
         </form>
 
         {/* Footer */}
