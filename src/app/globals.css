@@ -12,6 +12,16 @@
     --brand-success: #16803C;
     --brand-warning: #D97706;
     --brand-error: #DC2626;
+
+    /* NextGen PRD Design Tokens */
+    --color-primary-yellow: #F7D928;
+    --color-dark-text: #171717;
+    --color-secondary-text: #686868;
+    --color-bg: #FFFFFF;
+    --color-bg-alt: #F7F7F5;
+    --color-border: #E7E7E7;
+    --color-success: #16803C;
+    --color-error: #C62828;
   }
 
   body {

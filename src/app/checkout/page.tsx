@@ -7,44 +7,44 @@ import { AnnouncementBar } from "@/components/storefront/AnnouncementBar";
 import { Header } from "@/components/storefront/Header";
 import { Footer } from "@/components/storefront/Footer";
 import { useCart } from "@/components/providers/CartContext";
-import { formatPrice, generateOrderNumber, generateOtp } from "@/lib/utils";
+import { useAuth } from "@/components/providers/AuthContext";
+import { formatPrice } from "@/lib/utils";
 import {
   MapPin,
   Truck,
-  CreditCard,
+  Banknote,
   CheckCircle2,
   ArrowRight,
   ArrowLeft,
-  Store,
   ShieldCheck,
   ShoppingBag,
+  Clock,
+  AlertCircle,
 } from "lucide-react";
 
 export default function CheckoutPage() {
   const router = useRouter();
+  const { user, isAuthenticated } = useAuth();
   const { items, subtotal, deliveryFee, discount, total, clearCart } = useCart();
 
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const [errorMsg, setErrorMsg] = useState("");
 
   // Form states
   const [address, setAddress] = useState({
     type: "HOME",
-    fullName: "Amit Sharma",
-    phone: "+91 98765 43210",
+    fullName: user?.name ?? "Amit Sharma",
+    phone: user?.phone ?? "+91 98765 43210",
     houseBuilding: "Flat 402, Greenfield Heights",
     street: "Near Main Market, Civil Lines",
     landmark: "Opposite Town Hall",
     town: "Civil Lines, Ward 12",
-    pincode: "272206",
+    pincode: "272001",
   });
 
-  const [deliveryOption, setDeliveryOption] = useState<
-    "standard" | "same-day" | "pickup"
-  >("same-day");
-
-  const [paymentMethod, setPaymentMethod] = useState<
-    "UPI" | "CARD" | "NETBANKING" | "COD"
-  >("COD");
+  const [deliveryOption, setDeliveryOption] = useState<"express" | "standard">(
+    "express"
+  );
 
   const [isPlacing, setIsPlacing] = useState(false);
 
@@ -61,11 +61,11 @@ export default function CheckoutPage() {
             Your shopping cart is empty
           </h2>
           <p className="text-xs text-neutral-500 mt-1 mb-6">
-            Add some town essentials or audio gadgets before checking out.
+            Add some fresh essentials or local staples before checking out.
           </p>
           <Link
             href="/shop"
-            className="bg-[#FF5A36] text-white text-xs font-bold px-6 py-3 rounded-xl shadow-soft"
+            className="bg-[#0C831F] text-white text-xs font-bold px-6 py-3 rounded-xl shadow-xs"
           >
             Explore Catalog →
           </Link>
@@ -76,57 +76,59 @@ export default function CheckoutPage() {
   }
 
   const handlePlaceOrder = async () => {
+    setErrorMsg("");
     setIsPlacing(true);
-    const orderNumber = generateOrderNumber();
-    const deliveryOtp = generateOtp();
-
-    // Store in localStorage for instant tracking demo
-    const newOrder = {
-      orderNumber,
-      deliveryOtp,
-      date: new Date().toISOString(),
-      items,
-      address,
-      deliveryOption,
-      paymentMethod,
-      subtotal,
-      deliveryFee,
-      discount,
-      totalAmount: total,
-      status: "CONFIRMED",
-      estimatedDelivery: "Today, 5:00 PM – 8:00 PM",
-    };
 
     try {
-      const existing = JSON.parse(
-        localStorage.getItem("townkart_orders") || "[]"
-      );
-      localStorage.setItem(
-        "townkart_orders",
-        JSON.stringify([newOrder, ...existing])
-      );
-    } catch {
-      // ignore
-    }
+      const payload = {
+        items: items.map((i) => ({
+          productId: i.productId,
+          variantId: (i as unknown as { variantId?: string }).variantId,
+          quantity: i.quantity,
+        })),
+        address: {
+          fullName: address.fullName,
+          phone: address.phone,
+          houseBuilding: address.houseBuilding,
+          street: address.street,
+          landmark: address.landmark,
+          town: address.town,
+          state: "Uttar Pradesh",
+          pincode: address.pincode,
+          type: address.type,
+        },
+      };
 
-    // Call API / Server Action in background to persist
-    try {
-      await fetch("/api/orders", {
+      const res = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newOrder),
+        body: JSON.stringify(payload),
       });
-    } catch {
-      // ignore
-    }
 
-    setTimeout(() => {
+      const data = await res.json();
+
+      if (!res.ok) {
+        if (res.status === 401) {
+          router.push(`/login?redirect=/checkout`);
+          return;
+        }
+        setErrorMsg(data.error || "Failed to place order. Please try again.");
+        setIsPlacing(false);
+        return;
+      }
+
+      const orderNumber = data.data?.orderNumber || data.data?.order?.orderNumber;
+      const deliveryOtp = data.data?.order?.deliveryOtp || "849201";
+
       clearCart();
       setIsPlacing(false);
       router.push(
         `/checkout/success?orderNumber=${orderNumber}&otp=${deliveryOtp}&total=${total}`
       );
-    }, 600);
+    } catch {
+      setErrorMsg("Network error placing order. Please try again.");
+      setIsPlacing(false);
+    }
   };
 
   return (
@@ -136,18 +138,18 @@ export default function CheckoutPage() {
 
       <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 w-full">
         {/* Step Progress Tracker */}
-        <div className="max-w-3xl mx-auto mb-10">
+        <div className="max-w-2xl mx-auto mb-10">
           <div className="flex items-center justify-between relative">
             <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-1 bg-neutral-200 z-0" />
             <div
-              className="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-[#FF5A36] z-0 transition-all duration-300"
+              className="absolute left-0 top-1/2 -translate-y-1/2 h-1 bg-[#0C831F] z-0 transition-all duration-300"
               style={{ width: `${((step - 1) / 3) * 100}%` }}
             />
 
             {[
               { num: 1, label: "Address", icon: MapPin },
               { num: 2, label: "Delivery", icon: Truck },
-              { num: 3, label: "Payment", icon: CreditCard },
+              { num: 3, label: "Payment", icon: Banknote },
               { num: 4, label: "Review", icon: CheckCircle2 },
             ].map((s) => {
               const isDone = step > s.num;
@@ -157,9 +159,9 @@ export default function CheckoutPage() {
                   <div
                     className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs transition-colors shadow-xs ${
                       isDone
-                        ? "bg-[#16803C] text-white"
+                        ? "bg-[#0C831F] text-white"
                         : isCurrent
-                        ? "bg-[#FF5A36] text-white ring-4 ring-[#FF5A36]/20"
+                        ? "bg-[#0C831F] text-white ring-4 ring-[#0C831F]/20"
                         : "bg-white text-neutral-400 border border-neutral-300"
                     }`}
                   >
@@ -178,10 +180,17 @@ export default function CheckoutPage() {
           </div>
         </div>
 
+        {errorMsg && (
+          <div className="max-w-3xl mx-auto mb-6 p-4 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs font-bold flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            <span>{errorMsg}</span>
+          </div>
+        )}
+
         {/* Step Content & Order Summary */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           {/* Left: Active Step Form */}
-          <div className="lg:col-span-8 bg-white border border-neutral-200 rounded-3xl p-6 sm:p-8 shadow-soft">
+          <div className="lg:col-span-8 bg-white border border-neutral-200 rounded-3xl p-6 sm:p-8 shadow-xs">
             {/* STEP 1: Address */}
             {step === 1 && (
               <div className="space-y-6">
@@ -190,7 +199,7 @@ export default function CheckoutPage() {
                     Step 1: Delivery Address
                   </h2>
                   <span className="text-xs text-neutral-600 font-semibold">
-                    Civil Lines Town Zone
+                    Civil Lines Town Hub
                   </span>
                 </div>
 
@@ -223,7 +232,7 @@ export default function CheckoutPage() {
                       onChange={(e) =>
                         setAddress({ ...address, fullName: e.target.value })
                       }
-                      className="w-full text-xs font-semibold p-3 border border-neutral-200 rounded-xl focus:outline-[#FF5A36]"
+                      className="w-full text-xs font-semibold p-3 border border-neutral-200 rounded-xl focus:outline-[#0C831F]"
                     />
                   </div>
                   <div>
@@ -236,7 +245,7 @@ export default function CheckoutPage() {
                       onChange={(e) =>
                         setAddress({ ...address, phone: e.target.value })
                       }
-                      className="w-full text-xs font-semibold p-3 border border-neutral-200 rounded-xl focus:outline-[#FF5A36]"
+                      className="w-full text-xs font-semibold p-3 border border-neutral-200 rounded-xl focus:outline-[#0C831F]"
                     />
                   </div>
                   <div>
@@ -249,12 +258,12 @@ export default function CheckoutPage() {
                       onChange={(e) =>
                         setAddress({ ...address, houseBuilding: e.target.value })
                       }
-                      className="w-full text-xs font-semibold p-3 border border-neutral-200 rounded-xl focus:outline-[#FF5A36]"
+                      className="w-full text-xs font-semibold p-3 border border-neutral-200 rounded-xl focus:outline-[#0C831F]"
                     />
                   </div>
                   <div>
                     <label className="text-xs font-bold text-neutral-600 block mb-1">
-                      Street / Area / Ward
+                      Street / Ward / Colony
                     </label>
                     <input
                       type="text"
@@ -262,7 +271,7 @@ export default function CheckoutPage() {
                       onChange={(e) =>
                         setAddress({ ...address, street: e.target.value })
                       }
-                      className="w-full text-xs font-semibold p-3 border border-neutral-200 rounded-xl focus:outline-[#FF5A36]"
+                      className="w-full text-xs font-semibold p-3 border border-neutral-200 rounded-xl focus:outline-[#0C831F]"
                     />
                   </div>
                   <div>
@@ -275,12 +284,12 @@ export default function CheckoutPage() {
                       onChange={(e) =>
                         setAddress({ ...address, landmark: e.target.value })
                       }
-                      className="w-full text-xs font-semibold p-3 border border-neutral-200 rounded-xl focus:outline-[#FF5A36]"
+                      className="w-full text-xs font-semibold p-3 border border-neutral-200 rounded-xl focus:outline-[#0C831F]"
                     />
                   </div>
                   <div>
                     <label className="text-xs font-bold text-neutral-600 block mb-1">
-                      Town Pincode
+                      Town PIN Code
                     </label>
                     <input
                       type="text"
@@ -288,7 +297,7 @@ export default function CheckoutPage() {
                       onChange={(e) =>
                         setAddress({ ...address, pincode: e.target.value })
                       }
-                      className="w-full text-xs font-semibold p-3 border border-neutral-200 rounded-xl focus:outline-[#FF5A36]"
+                      className="w-full text-xs font-semibold p-3 border border-neutral-200 rounded-xl focus:outline-[#0C831F]"
                     />
                   </div>
                 </div>
@@ -296,7 +305,7 @@ export default function CheckoutPage() {
                 <div className="pt-4 flex justify-end">
                   <button
                     onClick={() => setStep(2)}
-                    className="flex items-center gap-2 bg-[#FF5A36] hover:bg-[#e04f2e] text-white px-7 py-3 rounded-xl font-bold text-xs shadow-soft"
+                    className="flex items-center gap-2 bg-[#0C831F] hover:bg-[#0a6f1a] text-white px-7 py-3 rounded-xl font-bold text-xs shadow-xs"
                   >
                     <span>Proceed to Delivery</span>
                     <ArrowRight className="w-4 h-4" />
@@ -310,50 +319,50 @@ export default function CheckoutPage() {
               <div className="space-y-6">
                 <div className="flex items-center justify-between pb-4 border-b border-neutral-100">
                   <h2 className="text-xl font-extrabold text-[#111111]">
-                    Step 2: Choose Delivery Option
+                    Step 2: Choose Delivery Speed
                   </h2>
-                  <span className="text-xs text-[#16803C] font-bold">
-                    Zone B Available
+                  <span className="text-xs text-[#0C831F] font-bold">
+                    Hub Dispatched
                   </span>
                 </div>
 
                 <div className="space-y-3">
-                  {/* Same Day */}
+                  {/* Express Delivery */}
                   <label
-                    onClick={() => setDeliveryOption("same-day")}
+                    onClick={() => setDeliveryOption("express")}
                     className={`flex items-start justify-between p-4 rounded-2xl border-2 cursor-pointer transition-all ${
-                      deliveryOption === "same-day"
-                        ? "border-[#FF5A36] bg-[#FF5A36]/5"
+                      deliveryOption === "express"
+                        ? "border-[#0C831F] bg-[#0C831F]/5"
                         : "border-neutral-200 hover:border-neutral-300"
                     }`}
                   >
                     <div className="flex items-start gap-3">
-                      <Truck className="w-5 h-5 text-[#FF5A36] mt-0.5" />
+                      <Clock className="w-5 h-5 text-[#0C831F] mt-0.5" />
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="font-extrabold text-sm text-[#111111]">
-                            Same-Day Express Delivery
+                            10–15 Minutes Express Delivery
                           </span>
-                          <span className="bg-[#FF5A36] text-white text-[9px] font-black uppercase px-2 py-0.5 rounded">
+                          <span className="bg-[#0C831F] text-white text-[9px] font-black uppercase px-2 py-0.5 rounded">
                             Fastest
                           </span>
                         </div>
                         <p className="text-xs text-neutral-500 mt-0.5">
-                          Delivery today between <strong>5:00 PM – 8:00 PM</strong>
+                          Dispatched directly by TownKart rider from nearest local hub
                         </p>
                       </div>
                     </div>
-                    <span className="font-extrabold text-xs text-[#16803C]">
+                    <span className="font-extrabold text-xs text-[#0C831F]">
                       {deliveryFee === 0 ? "FREE" : formatPrice(deliveryFee)}
                     </span>
                   </label>
 
-                  {/* Standard */}
+                  {/* Scheduled Delivery */}
                   <label
                     onClick={() => setDeliveryOption("standard")}
                     className={`flex items-start justify-between p-4 rounded-2xl border-2 cursor-pointer transition-all ${
                       deliveryOption === "standard"
-                        ? "border-[#FF5A36] bg-[#FF5A36]/5"
+                        ? "border-[#0C831F] bg-[#0C831F]/5"
                         : "border-neutral-200 hover:border-neutral-300"
                     }`}
                   >
@@ -361,39 +370,14 @@ export default function CheckoutPage() {
                       <Truck className="w-5 h-5 text-neutral-600 mt-0.5" />
                       <div>
                         <span className="font-extrabold text-sm text-[#111111]">
-                          Standard Scheduled Delivery
+                          Scheduled Evening Delivery (6 PM – 8 PM)
                         </span>
                         <p className="text-xs text-neutral-500 mt-0.5">
-                          Delivery tomorrow between 10:00 AM – 1:00 PM
+                          Arrives today evening at your doorstep
                         </p>
                       </div>
                     </div>
-                    <span className="font-extrabold text-xs text-[#16803C]">
-                      FREE
-                    </span>
-                  </label>
-
-                  {/* Store Pickup */}
-                  <label
-                    onClick={() => setDeliveryOption("pickup")}
-                    className={`flex items-start justify-between p-4 rounded-2xl border-2 cursor-pointer transition-all ${
-                      deliveryOption === "pickup"
-                        ? "border-[#FF5A36] bg-[#FF5A36]/5"
-                        : "border-neutral-200 hover:border-neutral-300"
-                    }`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <Store className="w-5 h-5 text-neutral-600 mt-0.5" />
-                      <div>
-                        <span className="font-extrabold text-sm text-[#111111]">
-                          Store Dark-Hub Pickup
-                        </span>
-                        <p className="text-xs text-neutral-500 mt-0.5">
-                          Pick up directly from Sector 4 Fulfillment Hub in 20 mins
-                        </p>
-                      </div>
-                    </div>
-                    <span className="font-extrabold text-xs text-[#16803C]">
+                    <span className="font-extrabold text-xs text-[#0C831F]">
                       FREE
                     </span>
                   </label>
@@ -409,7 +393,7 @@ export default function CheckoutPage() {
                   </button>
                   <button
                     onClick={() => setStep(3)}
-                    className="flex items-center gap-2 bg-[#FF5A36] hover:bg-[#e04f2e] text-white px-7 py-3 rounded-xl font-bold text-xs shadow-soft"
+                    className="flex items-center gap-2 bg-[#0C831F] hover:bg-[#0a6f1a] text-white px-7 py-3 rounded-xl font-bold text-xs shadow-xs"
                   >
                     <span>Proceed to Payment</span>
                     <ArrowRight className="w-4 h-4" />
@@ -418,70 +402,42 @@ export default function CheckoutPage() {
               </div>
             )}
 
-            {/* STEP 3: Payment Method */}
+            {/* STEP 3: Payment Method (COD ONLY per non-negotiable PRD) */}
             {step === 3 && (
               <div className="space-y-6">
                 <div className="flex items-center justify-between pb-4 border-b border-neutral-100">
                   <h2 className="text-xl font-extrabold text-[#111111]">
-                    Step 3: Select Payment Mode
+                    Step 3: Payment Method
                   </h2>
-                  <span className="flex items-center gap-1 text-xs text-neutral-400">
-                    <ShieldCheck className="w-4 h-4 text-[#16803C]" />
-                    <span>100% Encrypted</span>
+                  <span className="flex items-center gap-1 text-xs text-[#0C831F] font-bold">
+                    <ShieldCheck className="w-4 h-4" />
+                    <span>COD Guaranteed</span>
                   </span>
                 </div>
 
                 <div className="space-y-3">
-                  {[
-                    {
-                      id: "COD",
-                      name: "Cash on Delivery (COD)",
-                      desc: "Pay cash or scan QR upon delivery at doorstep",
-                    },
-                    {
-                      id: "UPI",
-                      name: "Instant UPI (Google Pay, PhonePe, Paytm)",
-                      desc: "Razorpay secure instant UPI intent & QR payment",
-                    },
-                    {
-                      id: "CARD",
-                      name: "Credit / Debit Cards (RuPay, Visa, Mastercard)",
-                      desc: "Safe 3D secure card payment",
-                    },
-                    {
-                      id: "NETBANKING",
-                      name: "Net Banking (SBI, HDFC, ICICI, Axis)",
-                      desc: "Direct net banking transfer",
-                    },
-                  ].map((m) => (
-                    <label
-                      key={m.id}
-                      onClick={() => setPaymentMethod(m.id as any)}
-                      className={`flex items-start justify-between p-4 rounded-2xl border-2 cursor-pointer transition-all ${
-                        paymentMethod === m.id
-                          ? "border-[#FF5A36] bg-[#FF5A36]/5"
-                          : "border-neutral-200 hover:border-neutral-300"
-                      }`}
-                    >
+                  <div className="p-5 rounded-2xl border-2 border-[#0C831F] bg-[#0C831F]/5 flex items-start justify-between">
+                    <div className="flex items-start gap-3.5">
+                      <div className="w-10 h-10 rounded-xl bg-[#0C831F]/15 flex items-center justify-center text-[#0C831F] flex-shrink-0">
+                        <Banknote className="w-5 h-5" />
+                      </div>
                       <div>
                         <span className="font-extrabold text-sm text-[#111111]">
-                          {m.name}
+                          Cash on Delivery (COD)
                         </span>
-                        <p className="text-xs text-neutral-500 mt-0.5">{m.desc}</p>
+                        <p className="text-xs text-neutral-500 mt-1 leading-relaxed">
+                          Pay cash to the delivery rider at your doorstep upon receiving your sealed package. 100% risk-free.
+                        </p>
                       </div>
-                      <div
-                        className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                          paymentMethod === m.id
-                            ? "border-[#FF5A36]"
-                            : "border-neutral-300"
-                        }`}
-                      >
-                        {paymentMethod === m.id && (
-                          <div className="w-2.5 h-2.5 rounded-full bg-[#FF5A36]" />
-                        )}
-                      </div>
-                    </label>
-                  ))}
+                    </div>
+                    <div className="w-5 h-5 rounded-full border-2 border-[#0C831F] flex items-center justify-center">
+                      <div className="w-2.5 h-2.5 rounded-full bg-[#0C831F]" />
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 bg-neutral-50 border border-neutral-200 rounded-xl text-[11px] text-neutral-500 leading-relaxed">
+                    💡 Per our local town quick-commerce policy, we currently accept Cash on Delivery only. You do not need to enter any card or bank account details online.
+                  </div>
                 </div>
 
                 <div className="pt-4 flex justify-between items-center">
@@ -494,7 +450,7 @@ export default function CheckoutPage() {
                   </button>
                   <button
                     onClick={() => setStep(4)}
-                    className="flex items-center gap-2 bg-[#FF5A36] hover:bg-[#e04f2e] text-white px-7 py-3 rounded-xl font-bold text-xs shadow-soft"
+                    className="flex items-center gap-2 bg-[#0C831F] hover:bg-[#0a6f1a] text-white px-7 py-3 rounded-xl font-bold text-xs shadow-xs"
                   >
                     <span>Review Order</span>
                     <ArrowRight className="w-4 h-4" />
@@ -510,70 +466,41 @@ export default function CheckoutPage() {
                   <h2 className="text-xl font-extrabold text-[#111111]">
                     Step 4: Final Review &amp; Confirm
                   </h2>
-                  <span className="text-xs font-bold text-[#16803C]">
-                    All Systems Ready
+                  <span className="text-xs font-bold text-[#0C831F]">
+                    Ready to Dispatch
                   </span>
                 </div>
 
                 {/* Summaries */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
                   <div className="p-4 bg-[#F7F7F5] rounded-2xl border border-neutral-200">
-                    <span className="font-bold text-neutral-400 uppercase tracking-wider block mb-1">
-                      Deliver To:
+                    <span className="font-extrabold text-neutral-400 uppercase text-[10px] block mb-1">
+                      Deliver To
                     </span>
                     <p className="font-bold text-[#111111]">{address.fullName}</p>
-                    <p className="text-neutral-600 mt-0.5">
+                    <p className="text-neutral-500 mt-0.5">
                       {address.houseBuilding}, {address.street}
                     </p>
-                    <p className="text-neutral-600">
-                      {address.town} • {address.pincode}
+                    <p className="text-neutral-500">
+                      {address.town} • PIN {address.pincode}
                     </p>
-                    <p className="font-medium text-[#111111] mt-1">{address.phone}</p>
+                    <p className="text-neutral-500 mt-1">Phone: {address.phone}</p>
                   </div>
 
                   <div className="p-4 bg-[#F7F7F5] rounded-2xl border border-neutral-200">
-                    <span className="font-bold text-neutral-400 uppercase tracking-wider block mb-1">
-                      Payment &amp; Speed:
+                    <span className="font-extrabold text-neutral-400 uppercase text-[10px] block mb-1">
+                      Payment &amp; Delivery
                     </span>
                     <p className="font-bold text-[#111111]">
-                      {paymentMethod === "COD"
-                        ? "Cash on Delivery"
-                        : `${paymentMethod} Online Payment`}
+                      Cash on Delivery (COD)
                     </p>
-                    <p className="text-[#16803C] font-semibold mt-1">
-                      ⚡ Same-Day Delivery: Today, 5:00 PM – 8:00 PM
+                    <p className="text-neutral-500 mt-0.5">
+                      Speed: 10–15 Minutes Express
                     </p>
-                    <p className="text-neutral-500 text-[11px] mt-1">
-                      A 6-digit verification OTP will be generated on confirmation.
+                    <p className="text-neutral-500">
+                      Payment: Pay {formatPrice(total)} upon arrival
                     </p>
                   </div>
-                </div>
-
-                {/* Items in order */}
-                <div className="divide-y divide-neutral-100 max-h-56 overflow-y-auto pr-2">
-                  {items.map((item) => (
-                    <div key={item.id} className="py-2.5 flex items-center justify-between gap-3 text-xs">
-                      <div className="flex items-center gap-3">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={item.image}
-                          alt={item.name}
-                          className="w-10 h-10 rounded-lg object-cover bg-neutral-100"
-                        />
-                        <div>
-                          <p className="font-bold text-[#111111] line-clamp-1">
-                            {item.name}
-                          </p>
-                          <span className="text-neutral-500 text-[11px]">
-                            Qty: {item.quantity}
-                          </span>
-                        </div>
-                      </div>
-                      <span className="font-extrabold text-[#111111]">
-                        {formatPrice(item.price * item.quantity)}
-                      </span>
-                    </div>
-                  ))}
                 </div>
 
                 <div className="pt-4 flex justify-between items-center">
@@ -587,9 +514,11 @@ export default function CheckoutPage() {
                   <button
                     onClick={handlePlaceOrder}
                     disabled={isPlacing}
-                    className="flex items-center gap-2 bg-[#FF5A36] hover:bg-[#e04f2e] text-white px-8 py-4 rounded-xl font-black text-sm shadow-soft transition-all active:scale-95 disabled:opacity-50"
+                    className="flex items-center gap-2 bg-[#0C831F] hover:bg-[#0a6f1a] text-white px-8 py-3.5 rounded-xl font-extrabold text-xs shadow-xs disabled:opacity-50"
                   >
-                    <span>{isPlacing ? "Processing Order..." : `Place Order • ${formatPrice(total)}`}</span>
+                    <span>
+                      {isPlacing ? "Placing Order..." : `Place Order • ${formatPrice(total)}`}
+                    </span>
                     <ArrowRight className="w-4 h-4" />
                   </button>
                 </div>
@@ -597,50 +526,65 @@ export default function CheckoutPage() {
             )}
           </div>
 
-          {/* Right: Sticky Order Summary Box */}
+          {/* Right: Order Summary */}
           <div className="lg:col-span-4 space-y-4">
-            <div className="bg-white border border-neutral-200 rounded-3xl p-6 shadow-soft space-y-4">
-              <h3 className="font-extrabold text-base text-[#111111]">
-                Order Summary ({items.reduce((s, i) => s + i.quantity, 0)} Items)
+            <div className="bg-white border border-neutral-200 rounded-3xl p-6 shadow-xs space-y-4">
+              <h3 className="font-black text-sm text-[#111111]">
+                Order Summary ({items.length} items)
               </h3>
 
-              <div className="space-y-2 text-xs text-neutral-600">
-                <div className="flex justify-between">
-                  <span>Cart Subtotal</span>
-                  <span className="font-semibold text-[#111111]">
-                    {formatPrice(subtotal)}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Local Express Delivery</span>
-                  {deliveryFee === 0 ? (
-                    <span className="font-bold text-[#16803C]">FREE</span>
-                  ) : (
-                    <span className="font-semibold text-[#111111]">
-                      {formatPrice(deliveryFee)}
+              <div className="divide-y divide-neutral-100 max-h-60 overflow-y-auto pr-1">
+                {items.map((item) => (
+                  <div
+                    key={item.id}
+                    className="py-2.5 flex items-center justify-between text-xs"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-10 h-10 rounded-lg bg-neutral-50 overflow-hidden flex-shrink-0 border border-neutral-100">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={item.image}
+                          alt={item.name}
+                          className="w-full h-full object-contain p-1"
+                        />
+                      </div>
+                      <div>
+                        <p className="font-bold text-[#111111] line-clamp-1 max-w-[130px]">
+                          {item.name}
+                        </p>
+                        <p className="text-[10px] text-neutral-400">
+                          Qty: {item.quantity}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="font-bold text-[#111111]">
+                      {formatPrice(item.price * item.quantity)}
                     </span>
-                  )}
+                  </div>
+                ))}
+              </div>
+
+              <div className="pt-3 border-t border-neutral-100 space-y-2 text-xs">
+                <div className="flex justify-between text-neutral-600">
+                  <span>Subtotal</span>
+                  <span className="font-bold text-[#111111]">{formatPrice(subtotal)}</span>
                 </div>
                 {discount > 0 && (
-                  <div className="flex justify-between text-[#16803C]">
-                    <span>Coupon Discount</span>
+                  <div className="flex justify-between text-[#0C831F]">
+                    <span>Discount</span>
                     <span className="font-bold">-{formatPrice(discount)}</span>
                   </div>
                 )}
-                <div className="flex justify-between text-base font-black text-[#111111] pt-3 border-t border-neutral-200">
+                <div className="flex justify-between text-neutral-600">
+                  <span>Delivery Fee</span>
+                  <span className="font-bold text-[#0C831F]">
+                    {deliveryFee === 0 ? "FREE" : formatPrice(deliveryFee)}
+                  </span>
+                </div>
+                <div className="pt-2 border-t border-neutral-100 flex justify-between text-sm font-black text-[#111111]">
                   <span>Total Amount</span>
-                  <span className="text-[#FF5A36]">{formatPrice(total)}</span>
+                  <span>{formatPrice(total)}</span>
                 </div>
-              </div>
-
-              <div className="bg-[#F7F7F5] rounded-xl p-3 text-[11px] text-neutral-600 space-y-1">
-                <div className="flex items-center gap-1.5 font-bold text-neutral-800">
-                  <ShieldCheck className="w-3.5 h-3.5 text-[#16803C]" />
-                  <span>Town Consumer Guarantee</span>
-                </div>
-                <p>
-                  No payment deduction until order is confirmed by town hub. Returns accepted at doorstep.
-                </p>
               </div>
             </div>
           </div>

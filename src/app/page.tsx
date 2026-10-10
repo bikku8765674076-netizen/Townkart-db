@@ -4,6 +4,7 @@ import { Header } from "@/components/storefront/Header";
 import { HeroSection } from "@/components/storefront/HeroSection";
 import { TrustBar } from "@/components/storefront/TrustBar";
 import { CategorySection } from "@/components/storefront/CategorySection";
+import { DealStrip } from "@/components/storefront/DealStrip";
 import { NewArrivalsSection } from "@/components/storefront/NewArrivalsSection";
 import { BestSellersSection } from "@/components/storefront/BestSellersSection";
 import { FlashSaleBanner } from "@/components/storefront/FlashSaleBanner";
@@ -81,6 +82,7 @@ export default async function HomePage() {
         <HeroSection />
         <TrustBar />
         <CategorySection />
+        <DealStrip />
         <NewArrivalsSection products={products} />
         <BestSellersSection products={products} />
         <FlashSaleBanner />

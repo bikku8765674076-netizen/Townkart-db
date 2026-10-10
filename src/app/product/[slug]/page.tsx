@@ -1,8 +1,7 @@
 "use client";
 
-import React, { useState, use } from "react";
+import React, { useState, useEffect, use } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { AnnouncementBar } from "@/components/storefront/AnnouncementBar";
 import { Header } from "@/components/storefront/Header";
 import { Footer } from "@/components/storefront/Footer";
@@ -18,222 +17,194 @@ import {
   RotateCcw,
   ShieldCheck,
   Heart,
-  Share2,
-  Check,
   Plus,
   Minus,
-  ShoppingBag,
-  MapPin,
-  CheckCircle2,
-  XCircle,
+  Clock,
+  ChevronRight,
+  AlertCircle,
 } from "lucide-react";
 
-// Catalog dictionary
-const PRODUCTS_DATA: Record<string, any> = {
-  "townkart-studio-wireless-headphones": {
-    id: "wh-01",
-    name: "TownKart Studio Wireless Headphones",
-    slug: "townkart-studio-wireless-headphones",
-    category: "Electronics",
-    brand: "TownKart Originals",
-    sku: "WH-001",
-    price: 1499,
-    mrp: 1899,
-    rating: 4.7,
-    reviewCount: 126,
-    stock: 42,
-    description:
-      "Engineered for deep acoustic immersion. Features 40mm high-res neodymium drivers, 40 hours of continuous music playback on a single charge, fast USB-C charging (10 mins gives 5 hours), and featherlight memory foam cushions for all-day comfort.",
-    highlights: [
-      "Active Noise Isolation with dual acoustic microphones",
-      "40-Hour continuous playback on standard charge",
-      "Fast Type-C charge: 10 mins gives 5 hours runtime",
-      "Bluetooth 5.3 with dual-device instant pairing",
-      "Integrated microphone for clear calling in noisy town traffic",
-    ],
-    variants: ["Midnight Black", "Pearl White", "Slate Blue"],
-    images: [
-      "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=900&auto=format&fit=crop&q=80",
-      "https://images.unsplash.com/photo-1484704849700-f032a568e944?w=900&auto=format&fit=crop&q=80",
-      "https://images.unsplash.com/photo-1546435770-a3e426bf472b?w=900&auto=format&fit=crop&q=80",
-    ],
-  },
-  "sony-wh-1000xm5-wireless-noise-cancelling-headphones": {
-    id: "wh-sony-01",
-    name: "Sony WH-1000XM5 Premium Noise Cancelling Headphones",
-    slug: "sony-wh-1000xm5-wireless-noise-cancelling-headphones",
-    category: "Electronics",
-    brand: "Sony",
-    sku: "WH-SONY-001",
-    price: 28999,
-    mrp: 34999,
-    rating: 4.8,
-    reviewCount: 412,
-    stock: 42,
-    description:
-      "Industry-leading noise cancellation with two processors and eight microphones for unprecedented noise isolation. Specially designed 30mm driver unit with carbon fibre composite material.",
-    highlights: [
-      "Auto NC Optimizer automatically adjusts noise cancellation to environment",
-      "Up to 30-hour battery life with quick charging (3 min charge for 3 hours)",
-      "Ultra-comfortable, lightweight design with soft fit leather",
-      "Multipoint connection allows pairing with two devices simultaneously",
-    ],
-    variants: ["Black", "Silver", "Midnight Blue"],
-    images: [
-      "https://images.unsplash.com/photo-1546435770-a3e426bf472b?w=900&auto=format&fit=crop&q=80",
-      "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=900&auto=format&fit=crop&q=80",
-    ],
-  },
-  "noise-colorfit-ultra-smart-watch": {
-    id: "sw-02",
-    name: "Noise ColorFit Ultra Smart Watch",
-    slug: "noise-colorfit-ultra-smart-watch",
-    category: "Electronics",
-    brand: "Noise",
-    sku: "SW-002",
-    price: 2999,
-    mrp: 4999,
-    rating: 4.6,
-    reviewCount: 215,
-    stock: 15,
-    description:
-      "1.75\" HD TruView display with 320x385 px resolution. Aluminum alloy body, 60 sports modes, continuous heart rate and SpO2 tracking, and IP68 waterproof rating.",
-    highlights: [
-      "1.75-inch HD TruView color display",
-      "SpO2 and 24/7 Heart rate monitor",
-      "60 Sports modes with fitness tracking app",
-      "IP68 Water resistance suitable for swimming & workouts",
-    ],
-    variants: ["Space Blue", "Charcoal Black", "Rose Pink"],
-    images: [
-      "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=900&auto=format&fit=crop&q=80",
-    ],
-  },
-};
+interface ProductDetail {
+  id: string;
+  name: string;
+  slug: string;
+  sku: string;
+  sellingPrice: number;
+  mrp: number;
+  stock: number;
+  rating?: number;
+  reviewCount?: number;
+  shortDescription?: string;
+  description?: string;
+  category: { name: string; slug: string };
+  brand?: { name: string; slug: string };
+  images: { url: string; alt?: string }[];
+  variants?: { id: string; name: string; price: number; stock: number }[];
+  related?: {
+    id: string;
+    name: string;
+    slug: string;
+    sellingPrice: number;
+    mrp: number;
+    stock: number;
+    images: { url: string }[];
+  }[];
+}
 
 export default function ProductDetailPage({
   params,
 }: {
   params: Promise<{ slug: string }>;
 }) {
-  const resolvedParams = use(params);
-  const router = useRouter();
-  const { addToCart } = useCart();
+  const { slug } = use(params);
+  const { items, addToCart, updateQuantity } = useCart();
   const { isInWishlist, toggleWishlist } = useWishlist();
 
-  const product =
-    PRODUCTS_DATA[resolvedParams.slug] ||
-    PRODUCTS_DATA["townkart-studio-wireless-headphones"];
+  const [product, setProduct] = useState<ProductDetail | null>(null);
+  const [selectedImage, setSelectedImage] = useState<string>("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
-  const [selectedImage, setSelectedImage] = useState(product.images[0]);
-  const [selectedVariant, setSelectedVariant] = useState(
-    product.variants ? product.variants[0] : ""
-  );
-  const [quantity, setQuantity] = useState(1);
-  const [pincode, setPincode] = useState("272206");
-  const [pincodeStatus, setPincodeStatus] = useState<
-    "idle" | "available" | "unavailable"
-  >("available");
-  const [activeTab, setActiveTab] = useState<"highlights" | "reviews">("highlights");
+  useEffect(() => {
+    const fetchProduct = async () => {
+      setLoading(true);
+      setError(false);
+      try {
+        const res = await fetch(`/api/products/${slug}`);
+        const json = await res.json();
+        if (json.success && json.data) {
+          setProduct(json.data);
+          const firstImg =
+            json.data.images?.[0]?.url ||
+            "https://images.unsplash.com/photo-1542838132-92c53300491e?w=500&auto=format&fit=crop&q=80";
+          setSelectedImage(firstImg);
+        } else {
+          setError(true);
+        }
+      } catch {
+        setError(true);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const discountPercent = Math.round(
-    ((product.mrp - product.price) / product.mrp) * 100
-  );
-  const isWishlisted = isInWishlist(product.id);
+    fetchProduct();
+  }, [slug]);
 
-  const handleCheckPincode = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (pincode.startsWith("272") || pincode.startsWith("226") || pincode === "110001") {
-      setPincodeStatus("available");
-    } else {
-      setPincodeStatus("unavailable");
-    }
-  };
-
-  const handleAddToCart = () => {
-    addToCart(
-      {
-        id: product.id,
-        name: product.name,
-        slug: product.slug,
-        image: product.images[0],
-        price: product.price,
-        mrp: product.mrp,
-        variantName: selectedVariant,
-      },
-      quantity
+  if (loading) {
+    return (
+      <div className="min-h-screen flex flex-col bg-[#F7F7F5]">
+        <AnnouncementBar />
+        <Header />
+        <main className="flex-1 max-w-7xl mx-auto px-4 py-12 w-full">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="aspect-square bg-white rounded-3xl animate-pulse" />
+            <div className="space-y-4">
+              <div className="h-8 bg-neutral-200 rounded-xl w-3/4 animate-pulse" />
+              <div className="h-6 bg-neutral-200 rounded-xl w-1/3 animate-pulse" />
+              <div className="h-24 bg-neutral-200 rounded-2xl animate-pulse" />
+            </div>
+          </div>
+        </main>
+        <Footer />
+      </div>
     );
-  };
+  }
 
-  const handleBuyNow = () => {
-    handleAddToCart();
-    router.push("/checkout");
-  };
+  if (error || !product) {
+    return (
+      <div className="min-h-screen flex flex-col bg-white">
+        <AnnouncementBar />
+        <Header />
+        <div className="flex-1 max-w-md mx-auto px-4 py-20 text-center flex flex-col items-center justify-center">
+          <AlertCircle className="w-12 h-12 text-neutral-300 mb-3" />
+          <h2 className="text-lg font-black text-[#111111]">
+            Product Not Found
+          </h2>
+          <p className="text-xs text-neutral-500 mt-1 mb-6">
+            The item you are looking for is unavailable or out of catalog.
+          </p>
+          <Link
+            href="/shop"
+            className="bg-[#0C831F] text-white text-xs font-bold px-6 py-2.5 rounded-xl"
+          >
+            Browse Products
+          </Link>
+        </div>
+        <Footer />
+      </div>
+    );
+  }
+
+  const cartItem = items.find((i) => i.productId === product.id);
+  const isWishlisted = isInWishlist(product.id);
+  const discountPercent =
+    product.mrp > product.sellingPrice
+      ? Math.round(
+          ((product.mrp - product.sellingPrice) / product.mrp) * 100
+        )
+      : 0;
 
   return (
-    <div className="min-h-screen flex flex-col bg-white">
+    <div className="min-h-screen flex flex-col bg-[#F7F7F5]">
       <AnnouncementBar />
       <Header />
 
-      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 w-full">
         {/* Breadcrumb */}
-        <div className="text-xs text-neutral-600 font-medium mb-6">
+        <nav className="flex items-center gap-1.5 text-xs text-neutral-500 mb-6 flex-wrap">
           <Link href="/" className="hover:text-black">
             Home
-          </Link>{" "}
-          /{" "}
-          <Link href="/shop" className="hover:text-black">
-            {product.category}
-          </Link>{" "}
-          / <span className="text-[#111111] font-semibold">{product.name}</span>
-        </div>
+          </Link>
+          <ChevronRight className="w-3 h-3" />
+          <Link
+            href={`/category/${product.category.slug}`}
+            className="hover:text-black"
+          >
+            {product.category.name}
+          </Link>
+          <ChevronRight className="w-3 h-3" />
+          <span className="font-semibold text-[#111111] truncate max-w-xs">
+            {product.name}
+          </span>
+        </nav>
 
-        {/* Product Core Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-          {/* Left Gallery */}
-          <div className="lg:col-span-6 space-y-4">
-            {/* Primary Main Image */}
-            <div className="relative aspect-square bg-[#F7F7F5] rounded-3xl overflow-hidden border border-neutral-200 shadow-soft">
+        {/* Product Grid: Left Image, Right Info */}
+        <div className="bg-white border border-neutral-200 rounded-3xl p-6 sm:p-8 shadow-xs grid grid-cols-1 md:grid-cols-12 gap-8">
+          {/* Left Column: Gallery */}
+          <div className="md:col-span-5 space-y-4">
+            <div className="relative aspect-square bg-[#FBFBFB] rounded-2xl overflow-hidden border border-neutral-100 flex items-center justify-center p-4">
+              {discountPercent > 0 && (
+                <span className="absolute top-3 left-3 bg-[#2563EB] text-white text-[10px] font-black px-2 py-0.5 rounded shadow-xs z-10">
+                  {discountPercent}% OFF
+                </span>
+              )}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={selectedImage}
                 alt={product.name}
-                className="w-full h-full object-cover transition-all duration-300"
+                className="w-full h-full object-contain"
               />
-              <span className="absolute top-4 left-4 bg-[#FF5A36] text-white text-xs font-black px-3 py-1 rounded-lg">
-                -{discountPercent}% OFF
-              </span>
-              <button
-                onClick={() => toggleWishlist(product.id)}
-                className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/90 backdrop-blur-xs flex items-center justify-center text-neutral-600 hover:text-red-500 shadow-xs transition-colors"
-                aria-label="Wishlist"
-              >
-                <Heart
-                  className={`w-5 h-5 ${
-                    isWishlisted ? "fill-red-500 text-red-500" : ""
-                  }`}
-                />
-              </button>
             </div>
 
-            {/* Thumbnails */}
+            {/* Thumbnail Row */}
             {product.images.length > 1 && (
-              <div className="flex gap-3">
-                {product.images.map((img: string, idx: number) => (
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {product.images.map((img, idx) => (
                   <button
                     key={idx}
-                    onClick={() => setSelectedImage(img)}
-                    className={`w-20 h-20 rounded-2xl overflow-hidden border-2 bg-neutral-100 transition-all ${
-                      selectedImage === img
-                        ? "border-[#FF5A36] shadow-sm"
-                        : "border-transparent opacity-70 hover:opacity-100"
+                    onClick={() => setSelectedImage(img.url)}
+                    className={`w-16 h-16 rounded-xl border p-1 bg-[#FBFBFB] flex-shrink-0 transition-all ${
+                      selectedImage === img.url
+                        ? "border-[#0C831F] ring-2 ring-[#0C831F]/20"
+                        : "border-neutral-200 hover:border-neutral-300"
                     }`}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={img}
-                      alt={`Thumbnail ${idx + 1}`}
-                      className="w-full h-full object-cover"
+                      src={img.url}
+                      alt={`Thumbnail ${idx}`}
+                      className="w-full h-full object-contain"
                     />
                   </button>
                 ))}
@@ -241,235 +212,165 @@ export default function ProductDetailPage({
             )}
           </div>
 
-          {/* Right Product Buy Box */}
-          <div className="lg:col-span-6 space-y-6">
-            <div>
-              <span className="text-xs font-bold text-[#FF5A36] uppercase tracking-wider">
-                {product.brand} • {product.category}
-              </span>
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-[#111111] mt-1 leading-tight">
-                {product.name}
-              </h1>
-
-              {/* Rating */}
-              <div className="flex items-center gap-2 mt-3">
-                <div className="flex items-center text-amber-500">
-                  {[...Array(5)].map((_, i) => (
-                    <Star
-                      key={i}
-                      className="w-4 h-4 fill-amber-400 text-amber-400"
-                    />
-                  ))}
-                </div>
-                <span className="text-xs font-bold text-[#111111]">
-                  {product.rating}
-                </span>
-                <span className="text-xs text-neutral-600">
-                  ({product.reviewCount} verified reviews)
-                </span>
-              </div>
-            </div>
-
-            {/* Pricing Section */}
-            <div className="bg-[#F7F7F5] rounded-2xl p-4 border border-neutral-200/80">
-              <div className="flex items-baseline gap-3">
-                <span className="text-3xl font-extrabold text-[#111111]">
-                  {formatPrice(product.price)}
-                </span>
-                <span className="text-base text-neutral-600 line-through">
-                  {formatPrice(product.mrp)}
-                </span>
-                <span className="bg-[#16803C] text-white text-xs font-bold px-2.5 py-0.5 rounded-md">
-                  Save {formatPrice(product.mrp - product.price)}
-                </span>
-              </div>
-              <p className="text-xs text-neutral-600 mt-1">
-                Inclusive of all town GST &amp; central taxes.
-              </p>
-            </div>
-
-            {/* Variant Picker */}
-            {product.variants && (
+          {/* Right Column: Title, Price, ADD button, Delivery details */}
+          <div className="md:col-span-7 flex flex-col justify-between space-y-6">
+            <div className="space-y-4">
               <div>
-                <span className="text-xs font-bold text-neutral-700 block mb-2">
-                  Select Color / Option: <strong className="text-black">{selectedVariant}</strong>
+                <span className="text-[10px] font-black uppercase tracking-wider text-[#0C831F] bg-[#0C831F]/10 px-2.5 py-0.5 rounded-full inline-block mb-1.5">
+                  {product.category.name}
                 </span>
-                <div className="flex flex-wrap gap-2.5">
-                  {product.variants.map((variant: string) => (
+                <h1 className="text-xl sm:text-2xl font-black text-[#111111] leading-snug">
+                  {product.name}
+                </h1>
+                <p className="text-xs text-neutral-500 font-medium mt-1">
+                  {product.shortDescription || "1 unit • Packed with care"}
+                </p>
+              </div>
+
+              {/* Delivery Timing Badge */}
+              <div className="inline-flex items-center gap-2 bg-[#F7F7F5] border border-neutral-200 px-3 py-1.5 rounded-xl text-xs font-bold text-[#111111]">
+                <Clock className="w-4 h-4 text-[#0C831F]" />
+                <span>10–15 Minutes Express Delivery</span>
+              </div>
+
+              {/* Pricing */}
+              <div className="flex items-baseline gap-3 pt-2">
+                <span className="text-2xl sm:text-3xl font-black text-[#111111]">
+                  {formatPrice(product.sellingPrice)}
+                </span>
+                {product.mrp > product.sellingPrice && (
+                  <span className="text-sm sm:text-base text-neutral-400 line-through font-semibold">
+                    {formatPrice(product.mrp)}
+                  </span>
+                )}
+                {discountPercent > 0 && (
+                  <span className="text-xs font-black text-[#0C831F]">
+                    Save {discountPercent}%
+                  </span>
+                )}
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center gap-4 pt-2">
+                {product.stock <= 0 ? (
+                  <span className="bg-red-50 text-red-600 font-black text-xs px-4 py-2.5 rounded-xl border border-red-200">
+                    Out of Stock
+                  </span>
+                ) : cartItem ? (
+                  <div className="flex items-center bg-[#0C831F] text-white rounded-xl px-2 py-1.5 font-black text-sm shadow-xs">
                     <button
-                      key={variant}
-                      onClick={() => setSelectedVariant(variant)}
-                      className={`text-xs font-bold px-4 py-2 rounded-xl border transition-all ${
-                        selectedVariant === variant
-                          ? "border-[#FF5A36] bg-[#FF5A36]/10 text-[#FF5A36]"
-                          : "border-neutral-200 hover:border-neutral-400 text-neutral-800"
-                      }`}
+                      onClick={() =>
+                        updateQuantity(cartItem.id, cartItem.quantity - 1)
+                      }
+                      className="p-1.5 hover:bg-black/15 rounded transition-colors"
                     >
-                      {variant}
+                      <Minus className="w-4 h-4" />
                     </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Quantity Stepper & Buy Buttons */}
-            <div className="space-y-3 pt-2">
-              <div className="flex items-center gap-4">
-                <div className="flex items-center border border-neutral-300 rounded-xl bg-white overflow-hidden shadow-xs">
+                    <span className="px-4 text-sm">{cartItem.quantity}</span>
+                    <button
+                      onClick={() =>
+                        updateQuantity(cartItem.id, cartItem.quantity + 1)
+                      }
+                      className="p-1.5 hover:bg-black/15 rounded transition-colors"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
                   <button
-                    onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                    className="p-3 text-neutral-600 hover:bg-neutral-100 transition-colors"
+                    onClick={() =>
+                      addToCart(
+                        {
+                          id: product.id,
+                          name: product.name,
+                          slug: product.slug,
+                          image:
+                            product.images[0]?.url ||
+                            "https://images.unsplash.com/photo-1542838132-92c53300491e?w=500&auto=format&fit=crop&q=80",
+                          price: product.sellingPrice,
+                          mrp: product.mrp,
+                        },
+                        1
+                      )
+                    }
+                    className="bg-[#0C831F] hover:bg-[#0a6f1a] text-white font-black text-xs sm:text-sm px-8 py-3 rounded-xl shadow-xs transition-transform active:scale-95"
                   >
-                    <Minus className="w-4 h-4" />
+                    ADD TO CART
                   </button>
-                  <span className="px-4 font-bold text-sm text-[#111111]">
-                    {quantity}
-                  </span>
-                  <button
-                    onClick={() => setQuantity((q) => q + 1)}
-                    className="p-3 text-neutral-600 hover:bg-neutral-100 transition-colors"
-                  >
-                    <Plus className="w-4 h-4" />
-                  </button>
-                </div>
+                )}
 
                 <button
-                  onClick={handleAddToCart}
-                  className="flex-1 flex items-center justify-center gap-2 bg-[#111111] hover:bg-neutral-800 text-white py-3.5 px-6 rounded-xl font-bold text-sm transition-all active:scale-95 shadow-soft"
+                  onClick={() => toggleWishlist(product.id)}
+                  className={`p-3 rounded-xl border transition-colors ${
+                    isWishlisted
+                      ? "bg-red-50 border-red-200 text-red-600"
+                      : "border-neutral-200 hover:border-neutral-300 text-neutral-600"
+                  }`}
+                  title="Wishlist"
                 >
-                  <ShoppingBag className="w-4 h-4" />
-                  <span>Add to Cart</span>
-                </button>
-
-                <button
-                  onClick={handleBuyNow}
-                  className="flex-1 bg-[#FF5A36] hover:bg-[#e04f2e] text-white py-3.5 px-6 rounded-xl font-bold text-sm transition-all active:scale-95 shadow-soft"
-                >
-                  Buy Now
-                </button>
-              </div>
-            </div>
-
-            {/* Delivery Availability Checker */}
-            <div className="border border-neutral-200 rounded-2xl p-4 bg-white shadow-soft">
-              <form onSubmit={handleCheckPincode} className="flex gap-2 mb-2">
-                <div className="relative flex-1">
-                  <MapPin className="w-4 h-4 text-neutral-400 absolute left-3 top-3" />
-                  <input
-                    type="text"
-                    value={pincode}
-                    onChange={(e) => setPincode(e.target.value)}
-                    placeholder="Enter your town pincode (e.g. 272206)"
-                    className="w-full text-xs pl-9 pr-3 py-2.5 border border-neutral-300 rounded-xl font-semibold text-[#111111] focus:outline-[#FF5A36]"
+                  <Heart
+                    className={`w-4 h-4 ${isWishlisted ? "fill-red-600" : ""}`}
                   />
-                </div>
-                <button
-                  type="submit"
-                  className="bg-[#111111] text-white text-xs font-bold px-4 py-2.5 rounded-xl hover:bg-neutral-800 transition-colors"
-                >
-                  Check
                 </button>
-              </form>
+              </div>
 
-              {pincodeStatus === "available" ? (
-                <div className="flex items-center gap-2 text-xs text-[#16803C] font-semibold">
-                  <CheckCircle2 className="w-4 h-4 text-[#16803C]" />
-                  <span>
-                    ✓ Express local delivery available! Expected delivery:{" "}
-                    <strong>Today between 5:00 PM – 8:00 PM</strong>
-                  </span>
+              {/* Why shop from TownKart */}
+              <div className="pt-6 border-t border-neutral-100 grid grid-cols-1 sm:grid-cols-3 gap-3 text-[11px] text-neutral-600 font-semibold">
+                <div className="flex items-center gap-2">
+                  <Truck className="w-4 h-4 text-[#0C831F] flex-shrink-0" />
+                  <span>10-15 Min Delivery</span>
                 </div>
-              ) : (
-                <div className="flex items-center gap-2 text-xs text-red-600 font-semibold">
-                  <XCircle className="w-4 h-4 text-red-600" />
-                  <span>
-                    Sorry, delivery is currently not active in pincode {pincode}.
-                  </span>
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-[#0C831F] flex-shrink-0" />
+                  <span>Cash on Delivery</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <RotateCcw className="w-4 h-4 text-[#0C831F] flex-shrink-0" />
+                  <span>Doorstep Return</span>
+                </div>
+              </div>
+
+              {/* Full Description */}
+              {product.description && (
+                <div className="pt-4 border-t border-neutral-100 space-y-1">
+                  <h3 className="font-extrabold text-xs text-[#111111]">
+                    Product Details
+                  </h3>
+                  <p className="text-xs text-neutral-600 leading-relaxed">
+                    {product.description}
+                  </p>
                 </div>
               )}
             </div>
+          </div>
+        </div>
 
-            {/* Trust highlights */}
-            <div className="grid grid-cols-3 gap-3 pt-2 text-center">
-              <div className="p-3 bg-[#F7F7F5] rounded-xl text-xs font-medium text-neutral-700">
-                <Truck className="w-4 h-4 text-[#FF5A36] mx-auto mb-1" />
-                <span>Town Express</span>
-              </div>
-              <div className="p-3 bg-[#F7F7F5] rounded-xl text-xs font-medium text-neutral-700">
-                <RotateCcw className="w-4 h-4 text-[#FF5A36] mx-auto mb-1" />
-                <span>Doorstep Returns</span>
-              </div>
-              <div className="p-3 bg-[#F7F7F5] rounded-xl text-xs font-medium text-neutral-700">
-                <ShieldCheck className="w-4 h-4 text-[#FF5A36] mx-auto mb-1" />
-                <span>100% Genuine</span>
-              </div>
+        {/* Related Products */}
+        {product.related && product.related.length > 0 && (
+          <div className="mt-12 space-y-4">
+            <h2 className="text-lg font-black text-[#111111]">
+              Customers Also Bought
+            </h2>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+              {product.related.map((rel) => (
+                <ProductCard
+                  key={rel.id}
+                  id={rel.id}
+                  name={rel.name}
+                  slug={rel.slug}
+                  category={product.category.name}
+                  image={
+                    rel.images[0]?.url ||
+                    "https://images.unsplash.com/photo-1542838132-92c53300491e?w=500&auto=format&fit=crop&q=80"
+                  }
+                  price={rel.sellingPrice}
+                  mrp={rel.mrp}
+                  stock={rel.stock}
+                />
+              ))}
             </div>
           </div>
-        </div>
-
-        {/* Product Details Tabs (Highlights / Reviews) */}
-        <div className="mt-16 pt-8 border-t border-neutral-200">
-          <div className="flex gap-6 border-b border-neutral-200 pb-3">
-            <button
-              onClick={() => setActiveTab("highlights")}
-              className={`text-sm font-extrabold pb-2 border-b-2 transition-colors ${
-                activeTab === "highlights"
-                  ? "border-[#FF5A36] text-[#FF5A36]"
-                  : "border-transparent text-neutral-500 hover:text-black"
-              }`}
-            >
-              Key Highlights &amp; Specs
-            </button>
-            <button
-              onClick={() => setActiveTab("reviews")}
-              className={`text-sm font-extrabold pb-2 border-b-2 transition-colors ${
-                activeTab === "reviews"
-                  ? "border-[#FF5A36] text-[#FF5A36]"
-                  : "border-transparent text-neutral-500 hover:text-black"
-              }`}
-            >
-              Customer Reviews ({product.reviewCount})
-            </button>
-          </div>
-
-          <div className="pt-6">
-            {activeTab === "highlights" ? (
-              <div className="space-y-4 max-w-2xl text-sm text-neutral-700">
-                <p className="leading-relaxed">{product.description}</p>
-                <ul className="space-y-2 pt-2">
-                  {product.highlights.map((h: string, idx: number) => (
-                    <li key={idx} className="flex items-center gap-2">
-                      <Check className="w-4 h-4 text-[#16803C]" />
-                      <span>{h}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : (
-              <div className="space-y-4 max-w-2xl">
-                <div className="border border-neutral-200 rounded-2xl p-4 bg-[#F7F7F5]">
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-sm text-[#111111]">
-                      Amit Sharma (Civil Lines)
-                    </span>
-                    <span className="text-xs text-neutral-600">2 days ago</span>
-                  </div>
-                  <div className="flex items-center text-amber-500 my-1">
-                    {[...Array(5)].map((_, i) => (
-                      <Star
-                        key={i}
-                        className="w-3.5 h-3.5 fill-amber-400 text-amber-400"
-                      />
-                    ))}
-                  </div>
-                  <p className="text-xs text-neutral-600">
-                    Received within 35 minutes directly from the Sector 4 hub! Sound quality is punchy and the battery easily lasts multiple days.
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+        )}
       </main>
 
       <Footer />
