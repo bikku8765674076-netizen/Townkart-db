@@ -4,7 +4,7 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useCart } from "@/components/providers/CartContext";
 import { formatPrice } from "@/lib/utils";
-import { Clock, Plus, Minus } from "lucide-react";
+import { Plus, Minus } from "lucide-react";
 
 export interface ProductCardProps {
   id: string;
@@ -37,14 +37,14 @@ export function ProductCard({
   const [loading, setLoading] = useState(false);
 
   const discountPercent =
-    mrp > price ? Math.round(((mrp - price) / mrp) * 100) : 0;
+    mrp > price && mrp > 0 ? Math.round(((mrp - price) / mrp) * 100) : 0;
   const cartItem = items.find((i) => i.productId === id);
   const isOutOfStock = stock <= 0;
 
   const handleAdd = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (isOutOfStock) return;
+    if (isOutOfStock || loading) return;
     setLoading(true);
     addToCart({ id, name, slug, image, price, mrp }, 1);
     setTimeout(() => setLoading(false), 200);
@@ -53,7 +53,9 @@ export function ProductCard({
   const handleIncrease = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (cartItem) updateQuantity(cartItem.id, cartItem.quantity + 1);
+    if (cartItem && cartItem.quantity < stock) {
+      updateQuantity(cartItem.id, cartItem.quantity + 1);
+    }
   };
 
   const handleDecrease = (e: React.MouseEvent) => {
@@ -67,93 +69,89 @@ export function ProductCard({
     : image;
 
   return (
-    <div className="group relative bg-white border border-[#E8E8E8] hover:border-neutral-300 rounded-2xl p-3 flex flex-col justify-between transition-all hover:shadow-sm">
-      {/* Top Image & Badges */}
+    <article className="group relative flex h-full flex-col justify-between rounded-2xl border border-[#E8E8E8] bg-white p-2.5 transition-colors hover:border-neutral-300 sm:p-3">
       <div>
-        <div className="relative w-full aspect-square bg-[#FBFBFB] rounded-xl overflow-hidden mb-2.5">
-          {/* Discount Badge */}
+        <div className="relative mb-2.5 aspect-square w-full overflow-hidden rounded-xl bg-[#FBFBFB]">
           {discountPercent > 0 && (
-            <span className="absolute top-1.5 left-1.5 z-10 bg-[#2563EB] text-white text-[9px] font-black px-1.5 py-0.5 rounded shadow-xs">
+            <span className="absolute left-1.5 top-1.5 z-10 rounded bg-[#2563EB] px-1.5 py-1 text-[10px] font-bold text-white">
               {discountPercent}% OFF
             </span>
           )}
 
-          {/* Delivery Timer Badge (Blinkit Style) */}
-          <div className="absolute top-1.5 right-1.5 z-10 bg-white/90 backdrop-blur-xs text-[#171717] text-[9px] font-black px-1.5 py-0.5 rounded shadow-xs flex items-center gap-1 border border-neutral-100">
-            <Clock className="w-2.5 h-2.5 text-neutral-500" />
-            <span>10 MINS</span>
-          </div>
-
-          <Link href={`/product/${slug}`} className="block w-full h-full">
+          <Link
+            href={`/product/${slug}`}
+            className="block h-full w-full rounded-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0C831F]"
+            aria-label={`View ${name} details`}
+          >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={optimizedImage}
               alt={name}
-              className="w-full h-full object-contain p-2 group-hover:scale-105 transition-transform duration-300"
+              className="h-full w-full object-contain p-2 transition-transform duration-200 group-hover:scale-[1.03]"
               loading="lazy"
+              decoding="async"
             />
           </Link>
         </div>
 
-        {/* Product Details */}
-        <Link href={`/product/${slug}`} className="block">
-          <h3 className="font-bold text-xs text-[#171717] line-clamp-2 leading-snug group-hover:text-[#0C831F] transition-colors">
+        <Link href={`/product/${slug}`} className="block rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0C831F]">
+          <h3 className="line-clamp-2 text-sm font-bold leading-snug text-[#171717] group-hover:text-[#0C831F]">
             {name}
           </h3>
-          <p className="text-[11px] text-neutral-500 font-medium mt-1 truncate">
-            {shortDescription || "1 unit • Fresh stock"}
+          <p className="mt-1 truncate text-xs font-medium text-neutral-500">
+            {shortDescription || "1 unit"}
           </p>
         </Link>
       </div>
 
-      {/* Bottom Price & ADD Button */}
-      <div className="mt-3 pt-2 flex items-center justify-between gap-2 border-t border-neutral-100">
-        <div>
-          <div className="text-xs font-black text-[#171717] leading-tight">
+      <div className="mt-3 flex items-center justify-between gap-2 border-t border-neutral-100 pt-2.5">
+        <div className="min-w-0">
+          <div className="text-sm font-extrabold leading-tight text-[#171717]">
             {formatPrice(price)}
           </div>
           {mrp > price && (
-            <div className="text-[10px] text-neutral-400 line-through font-medium leading-none mt-0.5">
+            <div className="mt-0.5 text-xs font-medium leading-none text-neutral-400 line-through">
               {formatPrice(mrp)}
             </div>
           )}
         </div>
 
-        {/* Quick Add or Quantity Selector */}
         {isOutOfStock ? (
-          <span className="text-[10px] font-bold text-[#C62828] bg-red-50 px-2 py-1 rounded-md">
-            Out of Stock
+          <span className="shrink-0 rounded-md bg-red-50 px-2 py-2 text-[11px] font-bold text-[#C62828]">
+            Out of stock
           </span>
         ) : cartItem ? (
-          <div className="flex items-center bg-[#0C831F] text-white rounded-lg px-1.5 py-1 font-black text-xs shadow-xs">
+          <div className="flex min-h-10 shrink-0 items-center rounded-lg bg-[#0C831F] px-1 text-white shadow-xs">
             <button
               onClick={handleDecrease}
-              className="p-1 hover:bg-black/15 rounded transition-colors"
-              aria-label="Decrease quantity"
+              className="flex h-9 w-9 items-center justify-center rounded-md transition-colors hover:bg-black/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
+              aria-label={`Decrease ${name} quantity`}
             >
-              <Minus className="w-3 h-3" />
+              <Minus className="h-4 w-4" />
             </button>
-            <span className="px-2 min-w-[20px] text-center text-xs">
+            <span className="min-w-6 text-center text-sm font-bold" aria-live="polite">
               {cartItem.quantity}
             </span>
             <button
               onClick={handleIncrease}
-              className="p-1 hover:bg-black/15 rounded transition-colors"
-              aria-label="Increase quantity"
+              disabled={cartItem.quantity >= stock}
+              className="flex h-9 w-9 items-center justify-center rounded-md transition-colors hover:bg-black/15 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
+              aria-label={`Increase ${name} quantity`}
             >
-              <Plus className="w-3 h-3" />
+              <Plus className="h-4 w-4" />
             </button>
           </div>
         ) : (
           <button
             onClick={handleAdd}
             disabled={loading}
-            className="border border-[#0C831F] text-[#0C831F] hover:bg-[#0C831F] hover:text-white font-black text-xs px-3.5 py-1.5 rounded-lg bg-[#0C831F]/5 transition-all active:scale-95 shadow-2xs"
+            className="min-h-10 min-w-[68px] shrink-0 rounded-lg border border-[#0C831F] bg-[#0C831F]/5 px-3 text-xs font-extrabold text-[#0C831F] transition-colors hover:bg-[#0C831F] hover:text-white active:scale-[0.98] disabled:cursor-wait disabled:opacity-60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0C831F]"
+            aria-label={`Add ${name} to cart`}
           >
-            ADD
+            {loading ? "Adding…" : "ADD"}
           </button>
         )}
       </div>
-    </div>
+    </article>
   );
 }
