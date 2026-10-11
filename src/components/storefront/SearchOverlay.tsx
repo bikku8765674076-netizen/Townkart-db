@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Search, X, TrendingUp, Clock, ArrowRight, Loader2 } from "lucide-react";
 import { formatPrice } from "@/lib/utils";
@@ -154,7 +153,7 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-start">
+    <div className="fixed inset-0 z-50 flex flex-col justify-start overflow-y-auto overscroll-contain">
       {/* Backdrop */}
       <div
         onClick={onClose}
@@ -162,12 +161,12 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
       />
 
       {/* Modal Container */}
-      <div className="relative z-10 w-full max-w-3xl mx-auto mt-16 px-4">
-        <div className="bg-white rounded-2xl shadow-2xl border border-neutral-200 overflow-hidden">
+      <div className="relative z-10 mx-auto mt-3 w-full min-w-0 max-w-3xl px-3 pb-3 sm:mt-16 sm:px-4">
+        <div role="dialog" aria-modal="true" aria-label="Search TownKart products" className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-2xl">
           {/* Top Search Input */}
           <form
             onSubmit={handleSubmit}
-            className="flex items-center px-5 py-4 border-b border-neutral-100 gap-3"
+            className="flex min-w-0 items-center gap-2 border-b border-neutral-100 px-3 py-3 sm:gap-3 sm:px-5 sm:py-4"
           >
             <Search className="w-5 h-5 text-[#FF5A36] flex-shrink-0" />
             <input
@@ -176,13 +175,13 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search products, brands, groceries, electronics..."
-              className="w-full text-base sm:text-lg bg-transparent text-[#111111] placeholder-neutral-400 focus:outline-none font-medium"
+              className="w-full min-w-0 bg-transparent text-sm font-medium text-[#111111] placeholder-neutral-400 focus:outline-none sm:text-lg"
             />
             {query && (
               <button
                 type="button"
                 onClick={() => setQuery("")}
-                className="p-1 text-neutral-400 hover:text-neutral-600 rounded-full"
+                aria-label="Clear search"\n                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -190,14 +189,14 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
             <button
               type="button"
               onClick={onClose}
-              className="text-xs bg-neutral-100 hover:bg-neutral-200 text-neutral-600 px-2.5 py-1.5 rounded-lg font-medium transition-colors ml-2"
+              aria-label="Close search"\n              className="ml-1 flex h-9 shrink-0 items-center rounded-lg bg-neutral-100 px-2.5 text-xs font-medium text-neutral-600 transition-colors hover:bg-neutral-200 sm:ml-2"
             >
               ESC
             </button>
           </form>
 
           {/* Body Content */}
-          <div className="p-5 max-h-[70vh] overflow-y-auto">
+          <div className="max-h-[calc(100dvh-6rem)] overflow-y-auto p-4 sm:max-h-[70vh] sm:p-5">
             {isLoading ? (
               <div className="flex items-center justify-center py-12 text-neutral-400 gap-2">
                 <Loader2 className="w-5 h-5 animate-spin text-[#FF5A36]" />
@@ -233,9 +232,9 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
                         key={item.id}
                         href={`/product/${item.slug}`}
                         onClick={onClose}
-                        className="flex items-center gap-4 py-3 hover:bg-neutral-50 rounded-xl px-2 transition-colors group"
+                        className="group flex min-w-0 items-center gap-3 rounded-xl px-2 py-3 transition-colors hover:bg-neutral-50 sm:gap-4"
                       >
-                        <div className="relative w-14 h-14 bg-neutral-100 rounded-lg overflow-hidden flex-shrink-0">
+                        <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-neutral-100">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
                           <img
                             src={item.image}
