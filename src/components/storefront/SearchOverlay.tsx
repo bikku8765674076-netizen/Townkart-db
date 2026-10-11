@@ -13,86 +13,21 @@ interface SearchResultItem {
   category: string;
   price: number;
   mrp: number;
-  image: string;
+  image: string | null;
 }
 
-const SAMPLE_SEARCH_CATALOG: SearchResultItem[] = [
-  {
-    id: "wh-01",
-    name: "TownKart Studio Wireless Headphones",
-    slug: "townkart-studio-wireless-headphones",
-    category: "Electronics",
-    price: 1499,
-    mrp: 1899,
-    image: "https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=300&auto=format&fit=crop&q=80",
-  },
-  {
-    id: "sw-02",
-    name: "Noise ColorFit Ultra Smart Watch",
-    slug: "noise-colorfit-ultra-smart-watch",
-    category: "Electronics",
-    price: 2999,
-    mrp: 4999,
-    image: "https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=300&auto=format&fit=crop&q=80",
-  },
-  {
-    id: "rs-02",
-    name: "Men's AeroStrider Running Shoes",
-    slug: "mens-aerostrider-running-shoes",
-    category: "Fashion",
-    price: 1999,
-    mrp: 2999,
-    image: "https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=300&auto=format&fit=crop&q=80",
-  },
-  {
-    id: "wb-03",
-    name: "Insulated Stainless Steel Water Bottle 1L",
-    slug: "insulated-stainless-steel-water-bottle-1l",
-    category: "Sports & Fitness",
-    price: 499,
-    mrp: 799,
-    image: "https://images.unsplash.com/photo-1602143407151-7111542de6e8?w=300&auto=format&fit=crop&q=80",
-  },
-  {
-    id: "gr-01",
-    name: "Aashirvaad Shudh Chakki Whole Wheat Atta 5kg",
-    slug: "aashirvaad-shudh-chakki-whole-wheat-atta-5kg",
-    category: "Grocery",
-    price: 245,
-    mrp: 285,
-    image: "https://images.unsplash.com/photo-1586201375761-83865001e31c?w=300&auto=format&fit=crop&q=80",
-  },
-  {
-    id: "gr-02",
-    name: "Amul Taaza Fresh Toned Milk 1L",
-    slug: "amul-taaza-fresh-toned-milk-1l",
-    category: "Grocery",
-    price: 52,
-    mrp: 54,
-    image: "https://images.unsplash.com/photo-1550583724-b2692b85b150?w=300&auto=format&fit=crop&q=80",
-  },
-  {
-    id: "gr-03",
-    name: "Fortune Sunlite Refined Sunflower Oil 1L",
-    slug: "fortune-sunlite-refined-sunflower-oil-1l",
-    category: "Grocery",
-    price: 142,
-    mrp: 165,
-    image: "https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=300&auto=format&fit=crop&q=80",
-  },
-  {
-    id: "fv-01",
-    name: "Farm Fresh Hybrid Tomatoes 1kg",
-    slug: "farm-fresh-hybrid-tomatoes-1kg",
-    category: "Fruits & Vegetables",
-    price: 35,
-    mrp: 45,
-    image: "https://images.unsplash.com/photo-1546470427-0d4db154ceb7?w=300&auto=format&fit=crop&q=80",
-  },
-];
+interface ApiProduct {
+  id: string;
+  name: string;
+  slug: string;
+  sellingPrice: number;
+  mrp: number;
+  category?: { name?: string | null } | null;
+  images?: Array<{ url?: string | null; alt?: string | null }>;
+}
 
-const RECENT_SEARCHES = ["Wireless Headphones", "Amul Milk", "Running Shoes", "Aashirvaad Atta"];
-const TRENDING_SEARCHES = ["Daily Essentials", "Electronics", "Fresh Vegetables", "Bestsellers", "Audio"];
+const RECENT_SEARCHES = ["Milk", "Atta", "Vegetables", "Rice"];
+const TRENDING_SEARCHES = ["Daily Essentials", "Fresh Vegetables", "Bestsellers", "Household"];
 
 interface SearchOverlayProps {
   isOpen: boolean;
@@ -105,125 +40,168 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResultItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
-    if (isOpen) {
-      setTimeout(() => inputRef.current?.focus(), 50);
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "unset";
+    if (!isOpen) {
       setQuery("");
       setResults([]);
+      setIsLoading(false);
+      setHasError(false);
+      return;
     }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const focusTimer = window.setTimeout(() => inputRef.current?.focus(), 50);
+
     return () => {
-      document.body.style.overflow = "unset";
+      window.clearTimeout(focusTimer);
+      document.body.style.overflow = previousOverflow;
     };
   }, [isOpen]);
 
   useEffect(() => {
-    if (!query.trim()) {
+    const trimmedQuery = query.trim();
+    if (!isOpen || trimmedQuery.length < 2) {
       setResults([]);
       setIsLoading(false);
+      setHasError(false);
       return;
     }
 
-    setIsLoading(true);
-    const timer = setTimeout(() => {
-      const q = query.toLowerCase().trim();
-      const filtered = SAMPLE_SEARCH_CATALOG.filter(
-        (item) =>
-          item.name.toLowerCase().includes(q) ||
-          item.category.toLowerCase().includes(q)
-      );
-      setResults(filtered);
-      setIsLoading(false);
-    }, 200);
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setIsLoading(true);
+      setHasError(false);
+      try {
+        const response = await fetch(`/api/search?q=${encodeURIComponent(trimmedQuery)}&limit=8`, {
+          signal: controller.signal,
+          headers: { Accept: "application/json" },
+        });
+        if (!response.ok) throw new Error("Search request failed");
+        const payload: { success?: boolean; data?: ApiProduct[] } = await response.json();
+        const products = Array.isArray(payload.data) ? payload.data : [];
+        setResults(
+          products.map((product) => ({
+            id: product.id,
+            name: product.name,
+            slug: product.slug,
+            category: product.category?.name || "Everyday essentials",
+            price: Number(product.sellingPrice) || 0,
+            mrp: Number(product.mrp) || Number(product.sellingPrice) || 0,
+            image: product.images?.[0]?.url || null,
+          }))
+        );
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") return;
+        setResults([]);
+        setHasError(true);
+      } finally {
+        if (!controller.signal.aborted) setIsLoading(false);
+      }
+    }, 250);
 
-    return () => clearTimeout(timer);
-  }, [query]);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [isOpen, query]);
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (query.trim()) {
-      onClose();
-      router.push(`/shop?q=${encodeURIComponent(query.trim())}`);
-    }
+  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const trimmedQuery = query.trim();
+    if (!trimmedQuery) return;
+    onClose();
+    router.push(`/shop?q=${encodeURIComponent(trimmedQuery)}`);
   };
+
+  const chooseSearch = (value: string) => setQuery(value);
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-start overflow-y-auto overscroll-contain">
-      {/* Backdrop */}
-      <div
+      <button
+        type="button"
+        aria-label="Close search overlay"
         onClick={onClose}
-        className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity"
+        className="fixed inset-0 cursor-default bg-black/60 backdrop-blur-sm"
       />
 
-      {/* Modal Container */}
       <div className="relative z-10 mx-auto mt-3 w-full min-w-0 max-w-3xl px-3 pb-3 sm:mt-16 sm:px-4">
-        <div role="dialog" aria-modal="true" aria-label="Search TownKart products" className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-2xl">
-          {/* Top Search Input */}
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Search TownKart products"
+          className="overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-2xl"
+        >
           <form
             onSubmit={handleSubmit}
             className="flex min-w-0 items-center gap-2 border-b border-neutral-100 px-3 py-3 sm:gap-3 sm:px-5 sm:py-4"
           >
-            <Search className="w-5 h-5 text-[#FF5A36] flex-shrink-0" />
+            <Search aria-hidden="true" className="h-5 w-5 shrink-0 text-[#FF5A36]" />
             <input
               ref={inputRef}
-              type="text"
+              type="search"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search products, brands, groceries, electronics..."
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search products, brands, groceries..."
+              aria-label="Search products"
+              autoComplete="off"
               className="w-full min-w-0 bg-transparent text-sm font-medium text-[#111111] placeholder-neutral-400 focus:outline-none sm:text-lg"
             />
             {query && (
               <button
                 type="button"
                 onClick={() => setQuery("")}
-                aria-label="Clear search"\n                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700"
+                aria-label="Clear search"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700"
               >
-                <X className="w-5 h-5" />
+                <X className="h-5 w-5" />
               </button>
             )}
             <button
               type="button"
               onClick={onClose}
-              aria-label="Close search"\n              className="ml-1 flex h-9 shrink-0 items-center rounded-lg bg-neutral-100 px-2.5 text-xs font-medium text-neutral-600 transition-colors hover:bg-neutral-200 sm:ml-2"
+              aria-label="Close search"
+              className="flex h-10 shrink-0 items-center rounded-lg bg-neutral-100 px-3 text-xs font-medium text-neutral-600 transition-colors hover:bg-neutral-200"
             >
-              ESC
+              Close
             </button>
           </form>
 
-          {/* Body Content */}
           <div className="max-h-[calc(100dvh-6rem)] overflow-y-auto p-4 sm:max-h-[70vh] sm:p-5">
             {isLoading ? (
-              <div className="flex items-center justify-center py-12 text-neutral-400 gap-2">
-                <Loader2 className="w-5 h-5 animate-spin text-[#FF5A36]" />
-                <span className="text-sm">Searching town catalog...</span>
+              <div className="flex items-center justify-center gap-2 py-12 text-neutral-400" role="status">
+                <Loader2 className="h-5 w-5 animate-spin text-[#FF5A36]" />
+                <span className="text-sm">Searching TownKart products…</span>
               </div>
-            ) : query.trim() ? (
+            ) : query.trim().length >= 2 ? (
               <div>
-                <div className="flex items-center justify-between mb-3 text-xs font-semibold text-neutral-400 uppercase tracking-wider">
-                  <span>Search Results ({results.length})</span>
+                <div className="mb-3 flex items-center justify-between gap-3 text-xs font-semibold uppercase tracking-wider text-neutral-400">
+                  <span>Search results ({results.length})</span>
                   {results.length > 0 && (
                     <button
+                      type="button"
                       onClick={handleSubmit}
-                      className="text-[#FF5A36] hover:underline flex items-center gap-1 normal-case font-medium"
+                      className="flex items-center gap-1 font-medium normal-case text-[#FF5A36] hover:underline"
                     >
-                      View all results <ArrowRight className="w-3.5 h-3.5" />
+                      View all results <ArrowRight className="h-3.5 w-3.5" />
                     </button>
                   )}
                 </div>
-
-                {results.length === 0 ? (
-                  <div className="text-center py-10">
-                    <p className="text-neutral-700 font-medium">
-                      No products found for &ldquo;{query}&rdquo;
-                    </p>
-                    <p className="text-xs text-neutral-400 mt-1">
-                      Try searching for &ldquo;Headphones&rdquo;, &ldquo;Milk&rdquo;, or &ldquo;Atta&rdquo;
-                    </p>
+                {hasError ? (
+                  <div className="py-10 text-center">
+                    <p className="font-medium text-neutral-700">Search is temporarily unavailable.</p>
+                    <button type="button" onClick={() => setQuery((value) => value + " ")} className="mt-2 text-sm text-[#FF5A36] underline">
+                      Try again
+                    </button>
+                  </div>
+                ) : results.length === 0 ? (
+                  <div className="py-10 text-center">
+                    <p className="font-medium text-neutral-700">No products found for “{query}”</p>
+                    <p className="mt-1 text-xs text-neutral-400">Try a product name, brand, or category.</p>
                   </div>
                 ) : (
                   <div className="divide-y divide-neutral-100">
@@ -232,74 +210,57 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
                         key={item.id}
                         href={`/product/${item.slug}`}
                         onClick={onClose}
-                        className="group flex min-w-0 items-center gap-3 rounded-xl px-2 py-3 transition-colors hover:bg-neutral-50 sm:gap-4"
+                        className="group flex min-w-0 items-center gap-3 rounded-xl px-2 py-3 transition-colors hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF5A36] sm:gap-4"
                       >
-                        <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-neutral-100">
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={item.image}
-                            alt={item.name}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                          />
+                        <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-neutral-100">
+                          {item.image ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={item.image} alt={item.name} loading="lazy" className="h-full w-full object-contain" />
+                          ) : (
+                            <Search aria-hidden="true" className="h-5 w-5 text-neutral-300" />
+                          )}
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <span className="text-[11px] font-semibold text-[#FF5A36] uppercase tracking-wide">
-                            {item.category}
-                          </span>
-                          <h4 className="text-sm font-semibold text-[#111111] truncate">
-                            {item.name}
-                          </h4>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-sm font-bold text-[#111111]">
-                              {formatPrice(item.price)}
-                            </span>
-                            <span className="text-xs text-neutral-400 line-through">
-                              {formatPrice(item.mrp)}
-                            </span>
+                        <div className="min-w-0 flex-1">
+                          <span className="text-[11px] font-semibold uppercase tracking-wide text-[#FF5A36]">{item.category}</span>
+                          <h4 className="truncate text-sm font-semibold text-[#111111]">{item.name}</h4>
+                          <div className="mt-0.5 flex items-center gap-2">
+                            <span className="text-sm font-bold text-[#111111]">{formatPrice(item.price)}</span>
+                            {item.mrp > item.price && (
+                              <span className="text-xs text-neutral-400 line-through">{formatPrice(item.mrp)}</span>
+                            )}
                           </div>
                         </div>
-                        <ArrowRight className="w-4 h-4 text-neutral-400 group-hover:text-[#FF5A36] group-hover:translate-x-1 transition-all" />
+                        <ArrowRight aria-hidden="true" className="h-4 w-4 shrink-0 text-neutral-400 transition-all group-hover:translate-x-1 group-hover:text-[#FF5A36]" />
                       </Link>
                     ))}
                   </div>
                 )}
               </div>
+            ) : query.trim().length === 1 ? (
+              <p className="py-5 text-center text-sm text-neutral-500">Type one more character to search.</p>
             ) : (
               <div className="space-y-6">
-                {/* Recent Searches */}
                 <div>
-                  <div className="flex items-center gap-2 text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-2.5">
-                    <Clock className="w-3.5 h-3.5" />
-                    <span>Recent Searches</span>
+                  <div className="mb-2.5 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-neutral-400">
+                    <Clock className="h-3.5 w-3.5" />
+                    <span>Quick searches</span>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {RECENT_SEARCHES.map((item) => (
-                      <button
-                        key={item}
-                        type="button"
-                        onClick={() => setQuery(item)}
-                        className="text-xs bg-neutral-100 hover:bg-neutral-200 text-neutral-700 px-3 py-1.5 rounded-full transition-colors"
-                      >
+                      <button key={item} type="button" onClick={() => chooseSearch(item)} className="min-h-9 rounded-full bg-neutral-100 px-3 py-2 text-xs text-neutral-700 transition-colors hover:bg-neutral-200">
                         {item}
                       </button>
                     ))}
                   </div>
                 </div>
-
-                {/* Trending */}
                 <div>
-                  <div className="flex items-center gap-2 text-xs font-semibold text-neutral-400 uppercase tracking-wider mb-2.5">
-                    <TrendingUp className="w-3.5 h-3.5 text-[#FF5A36]" />
-                    <span>Trending in Civil Lines Hub</span>
+                  <div className="mb-2.5 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-neutral-400">
+                    <TrendingUp className="h-3.5 w-3.5 text-[#FF5A36]" />
+                    <span>Popular searches</span>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {TRENDING_SEARCHES.map((item) => (
-                      <button
-                        key={item}
-                        type="button"
-                        onClick={() => setQuery(item)}
-                        className="text-xs border border-neutral-200 hover:border-[#FF5A36] hover:text-[#FF5A36] text-neutral-700 px-3 py-1.5 rounded-full transition-colors"
-                      >
+                      <button key={item} type="button" onClick={() => chooseSearch(item)} className="min-h-9 rounded-full border border-neutral-200 px-3 py-2 text-xs text-neutral-700 transition-colors hover:border-[#FF5A36] hover:text-[#FF5A36]">
                         {item}
                       </button>
                     ))}
