@@ -6,6 +6,8 @@ import { Clock, Bike, RefreshCw, Search } from "lucide-react";
 interface OrderItemRow { productName: string; quantity: number; unitPrice: number; }
 interface OrderAddress { town: string; pincode: string; }
 interface OrderAssignment { partner: { name: string; phone: string; vehicleType: string } | null; }
+interface RiderOption { userId: string; name: string; status: string; isApproved: boolean; }
+
 interface PipelineOrder {
   id: string;
   orderNumber: string;
@@ -24,6 +26,8 @@ const STAGE_COLUMNS = [
   { id: "PROCESSING", title: "Processing", color: "bg-purple-600" },
   { id: "PACKING", title: "Packing", color: "bg-violet-600" },
   { id: "READY_FOR_PICKUP", title: "Ready at Hub", color: "bg-amber-500" },
+  { id: "ASSIGNED", title: "Assigned to Rider", color: "bg-cyan-600" },
+  { id: "PICKED_UP", title: "Picked Up", color: "bg-sky-600" },
   { id: "OUT_FOR_DELIVERY", title: "Out for Delivery", color: "bg-[#FF5A36]" },
   { id: "DELIVERED", title: "Delivered", color: "bg-[#16803C]" },
 ];
@@ -32,8 +36,6 @@ const NEXT_STATUS: Record<string, string> = {
   CONFIRMED: "PROCESSING",
   PROCESSING: "PACKING",
   PACKING: "READY_FOR_PICKUP",
-  READY_FOR_PICKUP: "OUT_FOR_DELIVERY",
-  OUT_FOR_DELIVERY: "DELIVERED",
 };
 
 const STAGE_ACTION: Record<string, string> = {
@@ -49,6 +51,9 @@ export default function AdminOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [advancing, setAdvancing] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [riders, setRiders] = useState<RiderOption[]>([]);
+  const [selectedRiders, setSelectedRiders] = useState<Record<string, string>>({});
+  const [actionError, setActionError] = useState("");
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -65,17 +70,48 @@ export default function AdminOrdersPage() {
 
   useEffect(() => { fetchOrders(); }, [fetchOrders]);
 
+  useEffect(() => {
+    fetch("/api/admin/delivery/riders")
+      .then(async (res) => (res.ok ? res.json() : null))
+      .then((payload) => setRiders((payload?.data ?? []).filter((r: RiderOption) => r.isApproved && r.status === "ONLINE")))
+      .catch(() => setRiders([]));
+  }, []);
+
   const advanceStatus = async (orderId: string, currentStatus: string) => {
     const nextStatus = NEXT_STATUS[currentStatus];
     if (!nextStatus) return;
     setAdvancing(orderId);
     try {
-      await fetch(`/api/admin/orders/${orderId}/status`, {
+      const res = await fetch(`/api/admin/orders/${orderId}/status`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: nextStatus }),
       });
+      const payload = await res.json();
+      if (!res.ok) { setActionError(payload.error || "Could not update order."); return; }
+      setActionError("");
       await fetchOrders();
+    } catch {
+      setActionError("Network error updating order. Please retry.");
+    } finally { setAdvancing(null); }
+  };
+
+  const assignRider = async (orderId: string) => {
+    const riderId = selectedRiders[orderId];
+    if (!riderId) { setActionError("Choose an available delivery partner first."); return; }
+    setAdvancing(orderId);
+    try {
+      const res = await fetch(`/api/admin/orders/${orderId}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "ASSIGNED", riderId, reason: "Assigned from dispatch board" }),
+      });
+      const payload = await res.json();
+      if (!res.ok) { setActionError(payload.error || "Could not assign delivery partner."); return; }
+      setActionError("");
+      await fetchOrders();
+    } catch {
+      setActionError("Network error assigning delivery partner. Please retry.");
     } finally { setAdvancing(null); }
   };
 
@@ -106,6 +142,8 @@ export default function AdminOrdersPage() {
           </button>
         </div>
       </div>
+
+      {actionError && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 text-red-700 px-4 py-3 text-xs font-bold">{actionError}</div>}
 
       <div className="flex gap-4 overflow-x-auto pb-6">
         {STAGE_COLUMNS.map((col) => {
@@ -149,6 +187,19 @@ export default function AdminOrdersPage() {
                           <span>{rider.name}</span>
                         </div>
                       )}
+                      {col.id === "READY_FOR_PICKUP" && (
+                        <div className="space-y-2">
+                          <select value={selectedRiders[ord.id] ?? ""} onChange={(e) => setSelectedRiders((prev) => ({ ...prev, [ord.id]: e.target.value }))} className="w-full bg-white border border-neutral-200 rounded-lg px-2 py-2 text-[11px] font-semibold">
+                            <option value="">Choose available rider…</option>
+                            {riders.map((r) => <option key={r.userId} value={r.userId}>{r.name}</option>)}
+                          </select>
+                          <button onClick={() => assignRider(ord.id)} disabled={advancing === ord.id || !selectedRiders[ord.id]} className="w-full bg-[#111111] text-white py-2 rounded-xl text-[11px] font-extrabold disabled:opacity-40">
+                            {advancing === ord.id ? "Assigning…" : "Assign Rider →"}
+                          </button>
+                          {riders.length === 0 && <p className="text-[10px] text-neutral-400">No approved online riders available.</p>}
+                        </div>
+                      )}
+                      {col.id === "OUT_FOR_DELIVERY" && <p className="text-[10px] leading-relaxed text-neutral-500">The assigned delivery partner must verify the customer OTP to complete this COD order.</p>}
                       {col.id !== "DELIVERED" && NEXT_STATUS[col.id] && (
                         <button
                           onClick={() => advanceStatus(ord.id, col.id)}

@@ -1,227 +1,102 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import {
-  MapPin,
-  Bell,
-  TrendingUp,
-  ArrowRight,
-  Clock,
-  CheckCircle2,
-  AlertCircle,
-  Truck,
-  Satellite,
-} from "lucide-react";
-import { RiderSatelliteMap } from "@/components/delivery/RiderSatelliteMap";
+import { RefreshCw, MapPin, PackageCheck, Truck, Clock, AlertCircle, ArrowRight } from "lucide-react";
+import { formatPrice } from "@/lib/utils";
+
+interface DeliveryOrder {
+  id: string;
+  orderNumber: string;
+  status: string;
+  totalAmount: number;
+  paymentMethod: string;
+  paymentStatus: string;
+  createdAt: string;
+  items: { productName: string; quantity: number }[];
+  address: {
+    fullName: string;
+    phone: string;
+    houseBuilding: string;
+    street: string;
+    town: string;
+    pincode: string;
+  };
+  user: { name: string; phone: string | null };
+}
+interface Assignment {
+  id: string;
+  orderId: string;
+  assignedAt: string;
+  order: DeliveryOrder;
+}
 
 export default function DeliveryDashboardPage() {
-  const router = useRouter();
-  const [isOnline, setIsOnline] = useState(true);
-  const [assignmentAccepted, setAssignmentAccepted] = useState(false);
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const handleAccept = () => {
-    setAssignmentAccepted(true);
-    setTimeout(() => {
-      router.push("/delivery/orders/order-7492");
-    }, 400);
-  };
+  const loadAssignments = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/delivery/orders", { cache: "no-store" });
+      const payload = await res.json();
+      if (!res.ok) {
+        setError(payload.error || "Sign in with an approved delivery-partner account to see assignments.");
+        setAssignments([]);
+        return;
+      }
+      setAssignments(payload.data ?? []);
+    } catch {
+      setError("Unable to load deliveries. Check your connection and retry.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { loadAssignments(); }, [loadAssignments]);
+
+  const pickedUp = assignments.filter((a) => ["PICKED_UP", "OUT_FOR_DELIVERY"].includes(a.order.status)).length;
+  const ready = assignments.filter((a) => ["ASSIGNED", "READY_FOR_PICKUP"].includes(a.order.status)).length;
 
   return (
-    <div className="p-5 space-y-5">
-      {/* Top Header: Location, Online toggle, Notification Bell */}
-      <div className="flex items-center justify-between pt-2">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-full bg-neutral-100 flex items-center justify-center text-neutral-600">
-            <MapPin className="w-4 h-4 text-[#FF5A36]" />
-          </div>
-          <span className="text-xs font-bold text-[#111111]">
-            Civil Lines Hub #04
-          </span>
+    <main className="min-h-full bg-[#F7F7F5] p-4 sm:p-6 lg:p-8 space-y-6">
+      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <p className="text-[10px] font-black tracking-[0.18em] uppercase text-neutral-500">TownKart · Last-mile operations</p>
+          <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-[#111111] mt-1">Delivery desk<span className="text-[#F7D928]">.</span></h1>
+          <p className="text-xs text-neutral-500 mt-2">Your assigned orders, customer addresses and delivery verification.</p>
         </div>
+        <button onClick={loadAssignments} disabled={loading} className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#111111] text-white px-4 py-3 text-xs font-extrabold disabled:opacity-50">
+          <RefreshCw className={"w-4 h-4 " + (loading ? "animate-spin" : "")} /> Refresh assignments
+        </button>
+      </header>
 
-        <div className="flex items-center gap-3">
-          {/* Online / Offline Toggle */}
-          <button
-            onClick={() => setIsOnline(!isOnline)}
-            className={`flex items-center gap-2 px-3 py-1 rounded-full text-xs font-extrabold transition-colors shadow-xs ${
-              isOnline
-                ? "bg-[#16803C] text-white"
-                : "bg-neutral-200 text-neutral-600"
-            }`}
-          >
-            <span>{isOnline ? "ONLINE" : "OFFLINE"}</span>
-            <div
-              className={`w-3.5 h-3.5 rounded-full bg-white transition-transform ${
-                isOnline ? "translate-x-0.5" : "-translate-x-0.5"
-              }`}
-            />
-          </button>
+      {error && <div role="alert" className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs text-amber-900"><AlertCircle className="w-4 h-4 shrink-0 mt-0.5" /><p>{error}</p></div>}
 
-          <button
-            aria-label="Notifications"
-            className="w-8 h-8 rounded-full bg-neutral-100 flex items-center justify-center text-neutral-600 relative"
-          >
-            <Bell className="w-4 h-4" />
-            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-[#FF5A36]" />
-          </button>
-        </div>
-      </div>
+      <section className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="bg-white border border-neutral-200 rounded-2xl p-4"><p className="text-xs text-neutral-500">Active assignments</p><p className="text-3xl font-black mt-2">{assignments.length}</p></div>
+        <div className="bg-white border border-neutral-200 rounded-2xl p-4"><p className="text-xs text-neutral-500">Ready for pickup</p><p className="text-3xl font-black mt-2">{ready}</p></div>
+        <div className="bg-white border border-neutral-200 rounded-2xl p-4"><p className="text-xs text-neutral-500">Picked up / in transit</p><p className="text-3xl font-black mt-2">{pickedUp}</p></div>
+      </section>
 
-      {/* Today's Earnings Card */}
-      <div className="bg-gradient-to-br from-white to-[#F7F7F5] border border-neutral-200 rounded-3xl p-5 shadow-soft">
-        <div className="flex justify-between items-start">
-          <div>
-            <span className="text-xs font-bold text-neutral-500 uppercase tracking-wider">
-              Today&apos;s Earnings
-            </span>
-            <h2 className="text-3xl font-black text-[#111111] mt-1">
-              ₹1,150.75
-            </h2>
-            <div className="flex items-center gap-1 text-[11px] text-[#16803C] font-bold mt-1">
-              <TrendingUp className="w-3.5 h-3.5" />
-              <span>+18.4% vs yesterday • 12 Orders</span>
-            </div>
-          </div>
+      <section className="space-y-3">
+        <div className="flex items-center justify-between"><h2 className="font-black text-lg">My assigned orders</h2><span className="text-[10px] font-bold text-neutral-500">{assignments.length} active</span></div>
+        {loading ? <div className="bg-white border border-neutral-200 rounded-2xl p-10 text-center text-sm text-neutral-500">Loading assignments…</div> :
+          assignments.length === 0 ? <div className="bg-white border border-neutral-200 rounded-2xl p-10 text-center"><PackageCheck className="w-9 h-9 mx-auto text-neutral-300" /><h3 className="font-black mt-3">No active assignments</h3><p className="text-xs text-neutral-500 mt-2">New orders assigned by the TownKart dispatch team will appear here.</p></div> :
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">{assignments.map((assignment) => {
+            const order = assignment.order;
+            return <article key={assignment.id} className="bg-white border border-neutral-200 rounded-2xl p-5 space-y-4">
+              <div className="flex items-start justify-between gap-3"><div><p className="text-[10px] uppercase tracking-wider font-black text-neutral-400">Order number</p><h3 className="text-lg font-black mt-1">#{order.orderNumber}</h3><p className="text-[10px] text-neutral-500 mt-1">Assigned {new Date(assignment.assignedAt).toLocaleString("en-IN")}</p></div><span className="rounded-full bg-[#FFF6BE] px-3 py-1.5 text-[10px] font-black">{order.status.replaceAll("_", " ")}</span></div>
+              <div className="rounded-xl bg-[#F7F7F5] p-3"><p className="text-[10px] uppercase tracking-wider text-neutral-500 font-black">Items</p><p className="text-xs font-bold mt-2">{order.items.map((item) => item.productName + " × " + item.quantity).join(" · ")}</p><div className="flex justify-between border-t border-neutral-200 mt-3 pt-3 text-xs"><span className="text-neutral-500">Order total</span><b>{formatPrice(order.totalAmount)}</b></div></div>
+              <div className="flex items-start gap-3"><MapPin className="w-4 h-4 mt-0.5 text-[#A48B00] shrink-0" /><div className="min-w-0"><p className="text-sm font-extrabold">{order.address.fullName || order.user.name}</p><p className="text-xs text-neutral-600 mt-1">{[order.address.houseBuilding, order.address.street, order.address.town, order.address.pincode].filter(Boolean).join(", ")}</p>{(order.address.phone || order.user.phone) && <a className="inline-block text-xs font-bold underline mt-2" href={"tel:" + (order.address.phone || order.user.phone)}>{order.address.phone || order.user.phone}</a>}</div></div>
+              <Link href={"/delivery/orders/" + order.id} className="flex items-center justify-center gap-2 rounded-xl bg-[#111111] text-white px-4 py-3 text-xs font-extrabold">Open delivery task <ArrowRight className="w-4 h-4" /></Link>
+            </article>;
+          })}</div>}
+      </section>
 
-          {/* Mini Wave Graph */}
-          <div className="w-20 h-10 flex items-end gap-1 text-[#FF5A36]">
-            <div className="w-2.5 bg-[#FF5A36]/20 h-4 rounded-t" />
-            <div className="w-2.5 bg-[#FF5A36]/40 h-6 rounded-t" />
-            <div className="w-2.5 bg-[#FF5A36]/60 h-5 rounded-t" />
-            <div className="w-2.5 bg-[#FF5A36]/80 h-8 rounded-t" />
-            <div className="w-2.5 bg-[#FF5A36] h-10 rounded-t" />
-          </div>
-        </div>
-      </div>
-
-      {/* Live Satellite Delivery Radar */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-xs font-extrabold text-neutral-600 uppercase tracking-wider">
-              Live Satellite GPS Radar
-            </span>
-          </div>
-          <span className="text-[11px] font-bold text-neutral-500 bg-neutral-100 px-2 py-0.5 rounded-md flex items-center gap-1">
-            <Satellite className="w-3 h-3 text-[#FF5A36]" /> Civil Lines Sector
-          </span>
-        </div>
-
-        <RiderSatelliteMap
-          height="260px"
-          zoom={15}
-          riderLocation={{ lat: 26.7898, lng: 82.198 }}
-          customerLocation={{
-            lat: 26.7938,
-            lng: 82.2025,
-            name: "Order #TK-7492 Destination",
-            address: "Civil Lines, Ward 12",
-          }}
-          hubLocation={{
-            lat: 26.7865,
-            lng: 82.1932,
-            name: "Civil Lines Hub #04",
-          }}
-          showControls={true}
-        />
-      </div>
-
-      {/* Pending Order Assignment Card (From Image 5!) */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-extrabold text-neutral-500 uppercase tracking-wider">
-            Pending Order Assignment
-          </span>
-          <span className="text-[10px] font-bold text-[#FF5A36] bg-[#FF5A36]/10 px-2 py-0.5 rounded">
-            Live Task
-          </span>
-        </div>
-
-        <div className="bg-white border-2 border-[#FF5A36] rounded-3xl p-5 shadow-hover space-y-4">
-          <div className="flex items-start justify-between">
-            <div>
-              <span className="text-[11px] font-bold text-neutral-400 uppercase">
-                Order ID
-              </span>
-              <h3 className="text-lg font-black text-[#111111]">#TK-7492</h3>
-            </div>
-            <div className="text-right">
-              <span className="text-[11px] font-bold text-neutral-400 uppercase">
-                Est. Earning
-              </span>
-              <p className="text-lg font-black text-[#16803C]">₹85.00</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 bg-[#F7F7F5] rounded-2xl p-3 text-xs">
-            <div>
-              <span className="text-neutral-400 block font-medium">Distance:</span>
-              <strong className="text-neutral-800 font-bold">3.2 km</strong>
-            </div>
-            <div>
-              <span className="text-neutral-400 block font-medium">Customer Area:</span>
-              <strong className="text-neutral-800 font-bold">Civil Lines, Ward 12</strong>
-            </div>
-          </div>
-
-          <button
-            onClick={handleAccept}
-            className="w-full bg-[#FF5A36] hover:bg-[#e04f2e] text-white py-3.5 rounded-2xl font-black text-sm uppercase tracking-wider shadow-glow active:scale-95 transition-all"
-          >
-            {assignmentAccepted ? "Accepting Task..." : "ACCEPT DELIVERY"}
-          </button>
-        </div>
-      </div>
-
-      {/* Recent Orders List */}
-      <div className="space-y-2 pt-2">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-extrabold text-neutral-500 uppercase tracking-wider">
-            Recent Orders
-          </span>
-          <Link
-            href="/delivery/earnings"
-            className="text-xs font-bold text-[#FF5A36] hover:underline"
-          >
-            See All →
-          </Link>
-        </div>
-
-        <div className="space-y-2.5">
-          <div className="bg-white border border-neutral-200 rounded-2xl p-3.5 shadow-soft flex items-center justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-extrabold text-xs text-[#111111]">
-                  #TK-7492
-                </span>
-                <span className="text-[10px] text-neutral-400">1:00 pm</span>
-              </div>
-              <p className="text-[11px] text-neutral-500 mt-0.5">
-                Fresh Tomatoes, Milk 1L x 2
-              </p>
-            </div>
-            <span className="text-xs font-black text-[#111111]">₹1,199.30</span>
-          </div>
-
-          <div className="bg-white border border-neutral-200 rounded-2xl p-3.5 shadow-soft flex items-center justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-extrabold text-xs text-[#111111]">
-                  #TK-7488
-                </span>
-                <span className="text-[10px] text-neutral-400">11:45 am</span>
-              </div>
-              <p className="text-[11px] text-neutral-500 mt-0.5">
-                Aashirvaad Atta 5kg, Fortune Oil
-              </p>
-            </div>
-            <span className="text-xs font-black text-[#111111]">₹640.00</span>
-          </div>
-        </div>
-      </div>
-    </div>
+      <div className="rounded-2xl border border-neutral-200 bg-white p-4 flex gap-3"><Clock className="w-5 h-5 text-neutral-500 shrink-0" /><div><p className="text-xs font-extrabold">Delivery completion requires customer verification</p><p className="text-xs text-neutral-500 mt-1">For COD orders, collect the amount and enter the customer's six-digit OTP in the task screen. The order is marked paid only after verification.</p></div><Truck className="w-5 h-5 text-[#A48B00] shrink-0 ml-auto" /></div>
+    </main>
   );
 }

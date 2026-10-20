@@ -118,12 +118,11 @@ export default function CheckoutPage() {
       }
 
       const orderNumber = data.data?.orderNumber || data.data?.order?.orderNumber;
-      const deliveryOtp = data.data?.order?.deliveryOtp || "849201";
 
       clearCart();
       setIsPlacing(false);
       router.push(
-        `/checkout/success?orderNumber=${orderNumber}&otp=${deliveryOtp}&total=${total}`
+        `/checkout/success?orderNumber=${encodeURIComponent(orderNumber)}&total=${data.data?.order?.totalAmount ?? total}`
       );
     } catch {
       setErrorMsg("Network error placing order. Please try again.");
