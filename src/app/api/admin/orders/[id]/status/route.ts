@@ -3,33 +3,54 @@ import { cookies } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { SESSION_COOKIE, verifyJwt } from "@/lib/auth";
 
-const ADMIN_ROLES = ["SUPER_ADMIN","ADMIN","SUPERVISOR","ORDER_MANAGER","DELIVERY_MANAGER"];
-const VALID_STATUSES = ["CONFIRMED","PROCESSING","PACKING","READY_FOR_PICKUP","ASSIGNED","PICKED_UP","OUT_FOR_DELIVERY","DELIVERED","CANCELLED"];
+const ADMIN_ROLES = ["SUPER_ADMIN", "ADMIN", "SUPERVISOR", "ORDER_MANAGER", "DELIVERY_MANAGER"];
+const VALID_STATUSES = [
+  "CONFIRMED", "PROCESSING", "PACKING", "READY_FOR_PICKUP", "ASSIGNED",
+  "PICKED_UP", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED",
+];
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const cookieStore = await cookies();
-    const token = cookieStore.get(SESSION_COOKIE)?.value;
+    const token = (await cookies()).get(SESSION_COOKIE)?.value;
     const user = token ? await verifyJwt(token) : null;
     if (!user || !ADMIN_ROLES.includes(user.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const { id } = await params;
-    const { status, reason, riderId } = await req.json();
+    const body = await req.json() as { status?: string; reason?: string; riderId?: string };
+    const status = body.status;
+    const reason = typeof body.reason === "string" ? body.reason.slice(0, 500) : null;
+    const riderId = typeof body.riderId === "string" ? body.riderId : undefined;
 
     if (!status || !VALID_STATUSES.includes(status)) {
-      return NextResponse.json({ error: "Invalid status" }, { status: 400 });
+      return NextResponse.json({ error: "Invalid order status." }, { status: 400 });
     }
 
-    const order = await prisma.order.findUnique({ where: { id } });
-    if (!order) return NextResponse.json({ error: "Order not found" }, { status: 404 });
+    const result = await prisma.$transaction(async (tx) => {
+      const order = await tx.order.findUnique({ where: { id } });
+      if (!order) throw new Error("ORDER_NOT_FOUND");
+      if (order.status === status) return order;
+      if (order.status === "CANCELLED" || order.status === "DELIVERED") {
+        throw new Error("ORDER_TERMINAL");
+      }
+      if (status === "CANCELLED" && ["PICKED_UP", "OUT_FOR_DELIVERY"].includes(order.status)) {
+        throw new Error("CANCELLATION_TOO_LATE");
+      }
+      // COD is not paid merely because an admin changes an order status.
+      // The assigned delivery partner must verify the handoff OTP first.
+      if (status === "DELIVERED" && order.paymentMethod === "COD" && order.paymentStatus !== "PAID") {
+        throw new Error("COD_CONFIRMATION_REQUIRED");
+      }
 
-    const updated = await prisma.$transaction(async (tx) => {
-      const updatedOrder = await tx.order.update({ where: { id }, data: { status } });
+      const changed = await tx.order.updateMany({
+        where: { id, status: order.status },
+        data: { status },
+      });
+      if (changed.count !== 1) throw new Error("ORDER_CONCURRENT_UPDATE");
 
       await tx.orderStatusHistory.create({
         data: {
@@ -37,49 +58,77 @@ export async function PATCH(
           previousStatus: order.status,
           newStatus: status,
           changedByUserId: user.sub,
-          reason: reason ?? null,
+          reason,
         },
       });
 
       if (status === "ASSIGNED" && riderId) {
         const partner = await tx.deliveryPartner.findFirst({ where: { userId: riderId } });
-        if (partner) {
+        if (!partner || !partner.isApproved) throw new Error("RIDER_NOT_AVAILABLE");
+        const existingAssignment = await tx.deliveryAssignment.findFirst({
+          where: { orderId: id, deliveredAt: null, failedAt: null },
+        });
+        if (!existingAssignment) {
           await tx.deliveryAssignment.create({
             data: { orderId: id, partnerId: partner.id, assignedAt: new Date() },
           });
         }
       }
 
-      if (status === "CANCELLED" && order.status !== "CANCELLED") {
-        const items = await tx.orderItem.findMany({ where: { orderId: id } });
+      if (status === "CANCELLED") {
+        const items = await tx.orderItem.findMany({
+          where: { orderId: id },
+          select: { productId: true, variantId: true, quantity: true },
+        });
         for (const item of items) {
           await tx.product.update({
             where: { id: item.productId },
             data: { stock: { increment: item.quantity } },
           });
-        }
-        await tx.order.update({ where: { id }, data: { paymentStatus: "FAILED" } });
-      }
-
-      if (status === "DELIVERED") {
-        await tx.order.update({ where: { id }, data: { paymentStatus: "PAID" } });
-        const assignment = await tx.deliveryAssignment.findFirst({
-          where: { orderId: id }, orderBy: { assignedAt: "desc" },
-        });
-        if (assignment) {
-          await tx.deliveryAssignment.update({
-            where: { id: assignment.id },
-            data: { deliveredAt: new Date(), codCollected: true },
+          if (item.variantId) {
+            await tx.productVariant.update({
+              where: { id: item.variantId },
+              data: { stock: { increment: item.quantity } },
+            });
+          }
+          const product = await tx.product.findUnique({
+            where: { id: item.productId },
+            select: { stock: true },
+          });
+          await tx.inventoryTransaction.create({
+            data: {
+              productId: item.productId,
+              variantId: item.variantId,
+              type: "RETURN",
+              quantity: item.quantity,
+              balanceAfter: product?.stock ?? 0,
+              referenceType: "ORDER",
+              referenceId: id,
+              notes: "Stock restored after order cancellation",
+              createdByUserId: user.sub,
+            },
           });
         }
       }
 
-      return updatedOrder;
+      return tx.order.findUnique({ where: { id } });
     });
 
-    return NextResponse.json({ success: true, data: updated });
+    return NextResponse.json({ success: true, data: result });
   } catch (err) {
+    const message = err instanceof Error ? err.message : "";
+    const errors: Record<string, { status: number; message: string }> = {
+      ORDER_NOT_FOUND: { status: 404, message: "Order not found." },
+      ORDER_TERMINAL: { status: 409, message: "This order is already completed or cancelled." },
+      CANCELLATION_TOO_LATE: { status: 409, message: "This order can no longer be cancelled after pickup." },
+      COD_CONFIRMATION_REQUIRED: { status: 409, message: "Confirm COD collection with the delivery OTP before marking this order delivered." },
+      ORDER_CONCURRENT_UPDATE: { status: 409, message: "The order changed in another session. Refresh and try again." },
+      RIDER_NOT_AVAILABLE: { status: 400, message: "The selected delivery partner is unavailable or not approved." },
+    };
+    if (errors[message]) {
+      return NextResponse.json({ error: errors[message].message }, { status: errors[message].status });
+    }
     console.error("PATCH /api/admin/orders/[id]/status error:", err);
-    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+    return NextResponse.json({ error: "Unable to update this order right now." }, { status: 500 });
   }
 }
