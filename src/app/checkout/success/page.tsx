@@ -82,7 +82,7 @@ function SuccessContent() {
                 Delivery Verification OTP
               </span>
               <p className="text-2xl font-mono font-black text-[#111111] tracking-widest">
-                {otp}
+                {otp || "Loading securely…"}
               </p>
             </div>
           </div>
