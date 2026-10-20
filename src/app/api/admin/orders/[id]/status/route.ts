@@ -45,6 +45,7 @@ export async function PATCH(
       if (status === "DELIVERED" && order.paymentMethod === "COD" && order.paymentStatus !== "PAID") {
         throw new Error("COD_CONFIRMATION_REQUIRED");
       }
+      if (status === "ASSIGNED" && !riderId) throw new Error("RIDER_REQUIRED");
 
       const changed = await tx.order.updateMany({
         where: { id, status: order.status },
@@ -64,15 +65,15 @@ export async function PATCH(
 
       if (status === "ASSIGNED" && riderId) {
         const partner = await tx.deliveryPartner.findFirst({ where: { userId: riderId } });
-        if (!partner || !partner.isApproved) throw new Error("RIDER_NOT_AVAILABLE");
+        if (!partner || !partner.isApproved || partner.status !== "ONLINE") throw new Error("RIDER_NOT_AVAILABLE");
         const existingAssignment = await tx.deliveryAssignment.findFirst({
           where: { orderId: id, deliveredAt: null, failedAt: null },
         });
-        if (!existingAssignment) {
-          await tx.deliveryAssignment.create({
-            data: { orderId: id, partnerId: partner.id, assignedAt: new Date() },
-          });
-        }
+        if (existingAssignment) throw new Error("ORDER_ALREADY_ASSIGNED");
+        await tx.deliveryAssignment.create({
+          data: { orderId: id, partnerId: partner.id, assignedAt: new Date() },
+        });
+        await tx.deliveryPartner.update({ where: { id: partner.id }, data: { status: "BUSY" } });
       }
 
       if (status === "CANCELLED") {
@@ -123,7 +124,9 @@ export async function PATCH(
       CANCELLATION_TOO_LATE: { status: 409, message: "This order can no longer be cancelled after pickup." },
       COD_CONFIRMATION_REQUIRED: { status: 409, message: "Confirm COD collection with the delivery OTP before marking this order delivered." },
       ORDER_CONCURRENT_UPDATE: { status: 409, message: "The order changed in another session. Refresh and try again." },
-      RIDER_NOT_AVAILABLE: { status: 400, message: "The selected delivery partner is unavailable or not approved." },
+      RIDER_NOT_AVAILABLE: { status: 400, message: "The selected delivery partner is offline, unavailable or not approved." },
+      RIDER_REQUIRED: { status: 400, message: "Choose an approved online delivery partner before assigning this order." },
+      ORDER_ALREADY_ASSIGNED: { status: 409, message: "This order already has an active delivery assignment." },
     };
     if (errors[message]) {
       return NextResponse.json({ error: errors[message].message }, { status: errors[message].status });
