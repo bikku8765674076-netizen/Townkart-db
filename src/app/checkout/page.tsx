@@ -122,7 +122,7 @@ export default function CheckoutPage() {
       clearCart();
       setIsPlacing(false);
       router.push(
-        `/checkout/success?orderNumber=${encodeURIComponent(orderNumber)}&total=${total}`
+        `/checkout/success?orderNumber=${encodeURIComponent(orderNumber)}&total=${data.data?.order?.totalAmount ?? total}`
       );
     } catch {
       setErrorMsg("Network error placing order. Please try again.");
