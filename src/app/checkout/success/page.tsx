@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, Suspense } from "react";
+import React, { useEffect, useState, Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import confetti from "canvas-confetti";
@@ -20,9 +20,21 @@ import {
 
 function SuccessContent() {
   const searchParams = useSearchParams();
-  const orderNumber = searchParams.get("orderNumber") || "TK-9833";
-  const otp = searchParams.get("otp") || "849201";
-  const total = parseFloat(searchParams.get("total") || "1499");
+  const orderNumber = searchParams.get("orderNumber") || "";
+  const total = parseFloat(searchParams.get("total") || "0");
+  const [otp, setOtp] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/orders", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((payload) => {
+        const order = payload?.data?.find((item: { orderNumber?: string }) => item.orderNumber === orderNumber);
+        if (active && order?.deliveryOtp) setOtp(order.deliveryOtp);
+      })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [orderNumber]);
 
   useEffect(() => {
     // Trigger confetti on success
