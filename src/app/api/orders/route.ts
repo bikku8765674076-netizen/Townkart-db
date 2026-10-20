@@ -197,7 +197,7 @@ export async function POST(req: NextRequest) {
         await tx.inventoryTransaction.create({
           data: {
             productId,
-            type: "SALE_FULFILLED",
+            type: "SALE_RESERVED",
             quantity: -quantity,
             balanceAfter: updatedProduct?.stock ?? 0,
             referenceType: "ORDER",
@@ -304,7 +304,7 @@ export async function POST(req: NextRequest) {
     // in the URL, where it could leak through browser history or referrer logs.
     return NextResponse.json({
       success: true,
-      data: { order: { ...order, deliveryOtp }, orderNumber },
+      data: { order: { ...order, deliveryOtp: undefined }, orderNumber },
     }, { status: 201 });
   } catch (err) {
     const message = err instanceof Error ? err.message : "";
