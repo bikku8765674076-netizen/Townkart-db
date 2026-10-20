@@ -4,10 +4,14 @@ import { prisma } from "@/lib/prisma";
 import { SESSION_COOKIE, verifyJwt } from "@/lib/auth";
 
 const ADMIN_ROLES = ["SUPER_ADMIN", "ADMIN", "SUPERVISOR", "ORDER_MANAGER", "DELIVERY_MANAGER"];
-const VALID_STATUSES = [
-  "CONFIRMED", "PROCESSING", "PACKING", "READY_FOR_PICKUP", "ASSIGNED",
-  "PICKED_UP", "OUT_FOR_DELIVERY", "DELIVERED", "CANCELLED",
-];
+const ADMIN_STATUSES = ["CONFIRMED", "PROCESSING", "PACKING", "READY_FOR_PICKUP", "ASSIGNED", "CANCELLED"];
+const ALLOWED_TRANSITIONS: Record<string, string[]> = {
+  CONFIRMED: ["PROCESSING", "CANCELLED"],
+  PROCESSING: ["PACKING", "CANCELLED"],
+  PACKING: ["READY_FOR_PICKUP", "CANCELLED"],
+  READY_FOR_PICKUP: ["ASSIGNED", "CANCELLED"],
+  ASSIGNED: ["CANCELLED"],
+};
 
 export async function PATCH(
   req: NextRequest,
@@ -26,7 +30,7 @@ export async function PATCH(
     const reason = typeof body.reason === "string" ? body.reason.slice(0, 500) : null;
     const riderId = typeof body.riderId === "string" ? body.riderId : undefined;
 
-    if (!status || !VALID_STATUSES.includes(status)) {
+    if (!status || !ADMIN_STATUSES.includes(status)) {
       return NextResponse.json({ error: "Invalid order status." }, { status: 400 });
     }
 
@@ -37,14 +41,11 @@ export async function PATCH(
       if (order.status === "CANCELLED" || order.status === "DELIVERED") {
         throw new Error("ORDER_TERMINAL");
       }
-      if (status === "CANCELLED" && ["PICKED_UP", "OUT_FOR_DELIVERY"].includes(order.status)) {
-        throw new Error("CANCELLATION_TOO_LATE");
+      if (!(ALLOWED_TRANSITIONS[order.status] ?? []).includes(status)) {
+        throw new Error("INVALID_TRANSITION");
       }
-      // COD is not paid merely because an admin changes an order status.
-      // The assigned delivery partner must verify the handoff OTP first.
-      if (status === "DELIVERED" && order.paymentMethod === "COD" && order.paymentStatus !== "PAID") {
-        throw new Error("COD_CONFIRMATION_REQUIRED");
-      }
+      // Pickup, in-transit and delivery completion are controlled by the
+      // assigned rider endpoint; COD requires customer OTP verification.
       if (status === "ASSIGNED" && !riderId) throw new Error("RIDER_REQUIRED");
 
       const changed = await tx.order.updateMany({
@@ -77,6 +78,22 @@ export async function PATCH(
       }
 
       if (status === "CANCELLED") {
+        const activeAssignments = await tx.deliveryAssignment.findMany({
+          where: { orderId: id, deliveredAt: null, failedAt: null },
+          select: { id: true, partnerId: true },
+        });
+        for (const assignment of activeAssignments) {
+          await tx.deliveryAssignment.update({
+            where: { id: assignment.id },
+            data: { failedAt: new Date(), failureReason: "Order cancelled by store operations" },
+          });
+          const remaining = await tx.deliveryAssignment.count({
+            where: { partnerId: assignment.partnerId, deliveredAt: null, failedAt: null },
+          });
+          if (remaining === 0) {
+            await tx.deliveryPartner.update({ where: { id: assignment.partnerId }, data: { status: "ONLINE" } });
+          }
+        }
         const items = await tx.orderItem.findMany({
           where: { orderId: id },
           select: { productId: true, variantId: true, quantity: true },
@@ -124,6 +141,7 @@ export async function PATCH(
       CANCELLATION_TOO_LATE: { status: 409, message: "This order can no longer be cancelled after pickup." },
       COD_CONFIRMATION_REQUIRED: { status: 409, message: "Confirm COD collection with the delivery OTP before marking this order delivered." },
       ORDER_CONCURRENT_UPDATE: { status: 409, message: "The order changed in another session. Refresh and try again." },
+      INVALID_TRANSITION: { status: 409, message: "That status change is not allowed. Follow the order workflow in sequence." },
       RIDER_NOT_AVAILABLE: { status: 400, message: "The selected delivery partner is offline, unavailable or not approved." },
       RIDER_REQUIRED: { status: 400, message: "Choose an approved online delivery partner before assigning this order." },
       ORDER_ALREADY_ASSIGNED: { status: 409, message: "This order already has an active delivery assignment." },
